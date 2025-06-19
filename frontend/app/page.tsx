@@ -1,129 +1,144 @@
-'use client'
+"use client";
 
-import React, { useState } from 'react'
-import FileUploader from '../components/FileUploader'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { 
-  AlertCircle, 
-  CheckCircle2, 
-  FileSpreadsheet, 
-  Database, 
-  BarChart3, 
+import React, { useState } from "react";
+import FileUploader from "../components/FileUploader";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  AlertCircle,
+  CheckCircle2,
+  FileSpreadsheet,
+  Database,
+  BarChart3,
   Zap,
   ArrowRight,
-  Star
-} from 'lucide-react'
+  Star,
+} from "lucide-react";
 
-const API_BASE_URL = process.env.NODE_ENV === 'development' 
-  ? 'http://localhost:8000' 
-  : 'http://localhost:8000'
+const API_BASE_URL =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:8000"
+    : "http://localhost:8000";
 
 interface UploadResponse {
-  status: string
-  message: string
-  business_request_id: string
+  status: string;
+  message: string;
+  business_request_id: string;
   uploaded_files: Array<{
-    file_id: string
-    filename: string
-    file_size: number
-    file_type: string
-    storage_path: string
-  }>
-  total_files: number
+    file_id: string;
+    filename: string;
+    file_size: number;
+    file_type: string;
+    storage_path: string;
+  }>;
+  total_files: number;
 }
 
 export default function Home() {
-  const [isUploading, setIsUploading] = useState(false)
-  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleUpload = async (title: string, description: string, files: File[]) => {
-    setIsUploading(true)
-    setError(null)
-    setUploadResult(null)
+  const handleUpload = async (
+    title: string,
+    description: string,
+    files: File[]
+  ) => {
+    setIsUploading(true);
+    setError(null);
+    setUploadResult(null);
 
     try {
-      const formData = new FormData()
-      formData.append('title', title)
+      const formData = new FormData();
+      formData.append("title", title);
       if (description) {
-        formData.append('description', description)
+        formData.append("description", description);
       }
-      
+
       files.forEach((file) => {
-        formData.append('files', file)
-      })
+        formData.append("files", file);
+      });
 
       const response = await fetch(`${API_BASE_URL}/upload/business-request`, {
-        method: 'POST',
+        method: "POST",
         body: formData,
-      })
+      });
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'アップロードに失敗しました')
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "アップロードに失敗しました");
       }
 
-      const result: UploadResponse = await response.json()
-      setUploadResult(result)
-      
+      const result: UploadResponse = await response.json();
+      setUploadResult(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'アップロード中にエラーが発生しました')
+      setError(
+        err instanceof Error
+          ? err.message
+          : "アップロード中にエラーが発生しました"
+      );
     } finally {
-      setIsUploading(false)
+      setIsUploading(false);
     }
-  }
+  };
 
   const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes'
-    const k = 1024
-    const sizes = ['Bytes', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
 
   const features = [
     {
       icon: <FileSpreadsheet className="h-8 w-8 text-blue-600" />,
       title: "多形式対応",
-      description: "Excel（.xlsx/.xls）およびCSVファイルをサポート"
+      description: "Excel（.xlsx/.xls）およびCSVファイルをサポート",
     },
     {
       icon: <Database className="h-8 w-8 text-green-600" />,
       title: "安全な保存",
-      description: "Supabase Storageによる高セキュリティなファイル管理"
+      description: "Supabase Storageによる高セキュリティなファイル管理",
     },
     {
       icon: <BarChart3 className="h-8 w-8 text-purple-600" />,
       title: "高度な分析",
-      description: "AIによるデータ解析とマッチング機能"
+      description: "AIによるデータ解析とマッチング機能",
     },
     {
       icon: <Zap className="h-8 w-8 text-yellow-600" />,
       title: "高速処理",
-      description: "最適化されたエンジンによる迅速なデータ処理"
-    }
-  ]
+      description: "最適化されたエンジンによる迅速なデータ処理",
+    },
+  ];
 
   const steps = [
     {
-      number: "01", 
+      number: "01",
       title: "ファイルアップロード",
-      description: "業務依頼のタイトルを入力し、分析対象のExcel/CSVファイルをドラッグ&ドロップまたは選択してアップロード"
+      description:
+        "業務依頼のタイトルを入力し、分析対象のExcel/CSVファイルをドラッグ&ドロップまたは選択してアップロード",
     },
     {
       number: "02",
       title: "自動解析開始",
-      description: "AIがファイル構造を解析し、最適なマッチング戦略を策定"
+      description: "AIがファイル構造を解析し、最適なマッチング戦略を策定",
     },
     {
       number: "03",
       title: "結果確認",
-      description: "詳細な分析結果とレポートをダウンロード可能"
-    }
-  ]
+      description: "詳細な分析結果とレポートをダウンロード可能",
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
@@ -136,12 +151,18 @@ export default function Home() {
                 <FileSpreadsheet className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Excel Matching System</h1>
-                <p className="text-sm text-gray-600">Advanced Data Analysis Platform</p>
+                <h1 className="text-xl font-bold text-gray-900">
+                  Excel Matching System
+                </h1>
+                <p className="text-sm text-gray-600">
+                  Advanced Data Analysis Platform
+                </p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Badge variant="secondary" className="hidden sm:flex">v1.0.0</Badge>
+              <Badge variant="secondary" className="hidden sm:flex">
+                v1.0.0
+              </Badge>
               <Button variant="outline" size="sm">
                 ヘルプ
               </Button>
@@ -185,10 +206,7 @@ export default function Home() {
 
         {/* アップロードセクション */}
         <section className="mb-16">
-          <FileUploader 
-            onUpload={handleUpload} 
-            isUploading={isUploading}
-          />
+          <FileUploader onUpload={handleUpload} isUploading={isUploading} />
 
           {/* エラー表示 */}
           {error && (
@@ -217,21 +235,27 @@ export default function Home() {
                         {uploadResult.message}
                       </p>
                     </div>
-                    
+
                     <div className="bg-white p-4 rounded-lg border border-green-200">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         <div>
-                          <span className="font-medium text-gray-700">業務依頼ID:</span>
+                          <span className="font-medium text-gray-700">
+                            業務依頼ID:
+                          </span>
                           <code className="ml-2 font-mono text-xs bg-gray-100 px-2 py-1 rounded">
                             {uploadResult.business_request_id}
                           </code>
                         </div>
                         <div>
-                          <span className="font-medium text-gray-700">ファイル数:</span>
-                          <span className="ml-2">{uploadResult.total_files}個</span>
+                          <span className="font-medium text-gray-700">
+                            ファイル数:
+                          </span>
+                          <span className="ml-2">
+                            {uploadResult.total_files}個
+                          </span>
                         </div>
                       </div>
-                      
+
                       {/* アップロードファイル詳細 */}
                       <div className="mt-4">
                         <h4 className="font-medium text-gray-800 mb-3">
@@ -239,7 +263,10 @@ export default function Home() {
                         </h4>
                         <div className="space-y-2">
                           {uploadResult.uploaded_files.map((file) => (
-                            <div key={file.file_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                            <div
+                              key={file.file_id}
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
+                            >
                               <div className="flex items-center space-x-3">
                                 <FileSpreadsheet className="h-5 w-5 text-green-600" />
                                 <div>
@@ -286,7 +313,10 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((feature, index) => (
-              <Card key={index} className="border-2 hover:shadow-lg transition-all duration-200 hover:border-primary/20">
+              <Card
+                key={index}
+                className="border-2 hover:shadow-lg transition-all duration-200 hover:border-primary/20"
+              >
                 <CardHeader className="pb-4">
                   <div className="w-16 h-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl flex items-center justify-center mb-4">
                     {feature.icon}
@@ -346,9 +376,7 @@ export default function Home() {
                   <Button variant="outline" size="lg">
                     ドキュメントを見る
                   </Button>
-                  <Button size="lg">
-                    サポートに連絡
-                  </Button>
+                  <Button size="lg">サポートに連絡</Button>
                 </div>
               </div>
             </CardContent>
@@ -370,5 +398,5 @@ export default function Home() {
         </div>
       </footer>
     </div>
-  )
+  );
 }
