@@ -63,3 +63,9 @@ dist/
 
 # Task Master
 .taskmaster/
+
+# Cursor
+.cursor/
+
+# claude
+.claude/

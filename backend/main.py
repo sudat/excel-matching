@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from pinecone import Pinecone
+from routers import upload
 import os
 
 # 環境変数を読み込み
@@ -31,11 +32,14 @@ app = FastAPI(
 # CORSの設定（フロントエンドからのアクセスを許可）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.jsのデフォルトポート
+    allow_origins=["http://localhost:3000", "http://localhost:3002"],  # Next.jsのポート
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ルーターを追加
+app.include_router(upload.router)
 
 @app.get("/")
 async def root():
