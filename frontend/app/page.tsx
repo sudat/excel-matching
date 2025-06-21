@@ -150,7 +150,7 @@ export default function Home() {
         <section className="text-center mb-12">
           <div className="max-w-3xl mx-auto">
             <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-6 leading-tight">
-              Excel照合も
+              Excel照合を
               <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 自動で
               </span>
