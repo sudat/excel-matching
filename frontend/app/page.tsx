@@ -16,9 +16,6 @@ import {
   AlertCircle,
   CheckCircle2,
   FileSpreadsheet,
-  Database,
-  BarChart3,
-  Zap,
   ArrowRight,
   Star,
 } from "lucide-react";
@@ -97,29 +94,6 @@ export default function Home() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
-
-  const features = [
-    {
-      icon: <FileSpreadsheet className="h-8 w-8 text-blue-600" />,
-      title: "多形式対応",
-      description: "Excel（.xlsx/.xls）およびCSVファイルをサポート",
-    },
-    {
-      icon: <Database className="h-8 w-8 text-green-600" />,
-      title: "安全な保存",
-      description: "Supabase Storageによる高セキュリティなファイル管理",
-    },
-    {
-      icon: <BarChart3 className="h-8 w-8 text-purple-600" />,
-      title: "高度な分析",
-      description: "AIによるデータ解析とマッチング機能",
-    },
-    {
-      icon: <Zap className="h-8 w-8 text-yellow-600" />,
-      title: "高速処理",
-      description: "最適化されたエンジンによる迅速なデータ処理",
-    },
-  ];
 
   const steps = [
     {
@@ -298,39 +272,6 @@ export default function Home() {
               </Alert>
             </div>
           )}
-        </section>
-
-        {/* 機能紹介セクション */}
-        <section className="mb-16">
-          <div className="text-center mb-12">
-            <h3 className="text-3xl font-bold text-gray-900 mb-4">
-              なぜExcel Matching Systemを選ぶのか
-            </h3>
-            <p className="text-gray-600 max-w-2xl mx-auto">
-              最新のAI技術と直感的なユーザーインターフェースにより、複雑なデータ分析を誰でも簡単に実行できます。
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((feature, index) => (
-              <Card
-                key={index}
-                className="border-2 hover:shadow-lg transition-all duration-200 hover:border-primary/20"
-              >
-                <CardHeader className="pb-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl flex items-center justify-center mb-4">
-                    {feature.icon}
-                  </div>
-                  <CardTitle className="text-lg">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CardDescription className="text-base leading-relaxed">
-                    {feature.description}
-                  </CardDescription>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
         </section>
 
         {/* 使用方法セクション */}
