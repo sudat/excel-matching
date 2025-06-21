@@ -135,7 +135,7 @@ export default function Home() {
             </div>
             <div className="flex items-center space-x-2">
               <Badge variant="secondary" className="hidden sm:flex">
-                v1.0.0
+                v0.1.0
               </Badge>
               <Button variant="outline" size="sm">
                 ヘルプ
