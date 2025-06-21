@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Upload, File, X, AlertCircle, CheckCircle2, FileSpreadsheet } from 'lucide-react'
 import { SheetSelector } from './SheetSelector'
+import { TableSelector } from './TableSelector'
 
 interface UploadedFile {
   file: File
@@ -26,18 +27,48 @@ interface SheetInfo {
   estimated_data_cells: number
 }
 
+interface TableCandidate {
+  table_id: string
+  sheet_name: string
+  range: {
+    start_row: number
+    end_row: number
+    start_col: number
+    end_col: number
+    excel_range: string
+  }
+  header_row: number | null
+  quality_score: number
+  data_density: number
+  dimensions: {
+    row_count: number
+    col_count: number
+    estimated_records: number
+  }
+  headers: string[]
+  sample_data: Array<Record<string, string>>
+  metadata: {
+    detection_method: string
+    data_cells: number
+    total_cells: number
+  }
+}
+
 interface UploadState {
-  step: 'upload' | 'select-sheet' | 'processing' | 'complete'
+  step: 'upload' | 'select-sheet' | 'select-table' | 'processing' | 'complete'
   sessionId?: string
   filename?: string
   availableSheets?: SheetInfo[]
   selectedSheet?: string
+  availableTables?: TableCandidate[]
+  selectedTable?: string
 }
 
 interface FileUploaderProps {
   onUpload: (title: string, description: string, files: File[]) => Promise<void>
   onExcelSheetsReceived?: (sessionId: string, filename: string, sheets: SheetInfo[]) => void
   onSheetSelected?: (sessionId: string, sheetName: string) => void
+  onTableSelected?: (sessionId: string, tableId: string) => void
   isUploading: boolean
   apiBaseUrl?: string
 }
@@ -46,6 +77,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   onUpload, 
   onExcelSheetsReceived,
   onSheetSelected,
+  onTableSelected,
   isUploading,
   apiBaseUrl = 'http://localhost:8000'
 }) => {
@@ -217,18 +249,117 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     }
   }
 
-  const handleSheetSelection = (sheetName: string) => {
-    if (uploadState.sessionId) {
+  const handleSheetSelection = async (sheetName: string) => {
+    if (!uploadState.sessionId) return
+    
+    try {
       setUploadState(prev => ({
         ...prev,
-        selectedSheet: sheetName,
-        step: 'complete'
+        step: 'processing'
       }))
+      
+      // 表検出APIを呼び出し
+      const encodedSheetName = encodeURIComponent(sheetName)
+      const response = await fetch(`${apiBaseUrl}/api/excel-sheet-tables/${uploadState.sessionId}/${encodedSheetName}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      
+      if (result.status === 'success' && result.data.tables.length > 0) {
+        // 複数の表が見つかった場合は表選択画面へ
+        setUploadState({
+          step: 'select-table',
+          sessionId: uploadState.sessionId,
+          filename: uploadState.filename,
+          availableSheets: uploadState.availableSheets,
+          selectedSheet: sheetName,
+          availableTables: result.data.tables
+        })
+      } else if (result.data.tables.length === 0) {
+        // 表が見つからない場合
+        setErrors(['選択されたシートには表が見つかりませんでした。他のシートを試してください。'])
+        setUploadState(prev => ({
+          ...prev,
+          step: 'select-sheet'
+        }))
+      } else {
+        throw new Error(result.message || '表検出に失敗しました')
+      }
       
       if (onSheetSelected) {
         onSheetSelected(uploadState.sessionId, sheetName)
       }
+    } catch (error) {
+      console.error('Table detection failed:', error)
+      setErrors([error instanceof Error ? error.message : '表検出に失敗しました'])
+      setUploadState(prev => ({
+        ...prev,
+        step: 'select-sheet'
+      }))
     }
+  }
+
+  const handleTableSelection = async (tableId: string) => {
+    if (!uploadState.sessionId) return
+    
+    try {
+      setUploadState(prev => ({
+        ...prev,
+        step: 'processing'
+      }))
+      
+      // 表選択APIを呼び出し
+      const response = await fetch(`${apiBaseUrl}/api/select-table/${uploadState.sessionId}/${tableId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      
+      if (result.status === 'success') {
+        setUploadState(prev => ({
+          ...prev,
+          selectedTable: tableId,
+          step: 'complete'
+        }))
+        
+        if (onTableSelected) {
+          onTableSelected(uploadState.sessionId, tableId)
+        }
+      } else {
+        throw new Error(result.message || '表選択に失敗しました')
+      }
+    } catch (error) {
+      console.error('Table selection failed:', error)
+      setErrors([error instanceof Error ? error.message : '表選択に失敗しました'])
+      setUploadState(prev => ({
+        ...prev,
+        step: 'select-table'
+      }))
+    }
+  }
+
+  const handleBackToSheetSelection = () => {
+    setUploadState(prev => ({
+      ...prev,
+      step: 'select-sheet',
+      availableTables: undefined
+    }))
+    setErrors([])
   }
 
   const handleBackToUpload = () => {
@@ -285,16 +416,52 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     )
   }
 
+  // 表選択画面を表示
+  if (uploadState.step === 'select-table' && uploadState.availableTables && uploadState.sessionId && uploadState.filename && uploadState.selectedSheet) {
+    return (
+      <TableSelector
+        filename={uploadState.filename}
+        sheetName={uploadState.selectedSheet}
+        tables={uploadState.availableTables}
+        sessionId={uploadState.sessionId}
+        onSelectTable={handleTableSelection}
+        onBack={handleBackToSheetSelection}
+        isLoading={isUploading}
+      />
+    )
+  }
+
   // 処理中画面
   if (uploadState.step === 'processing') {
+    const getProcessingMessage = () => {
+      if (uploadState.selectedSheet && !uploadState.availableTables) {
+        return {
+          title: 'シート内の表を検出中...',
+          description: `シート「${uploadState.selectedSheet}」から表を検出しています`
+        }
+      } else if (uploadState.availableTables) {
+        return {
+          title: '表データを取得中...',
+          description: '選択された表のデータを処理しています'
+        }
+      } else {
+        return {
+          title: 'Excelファイルを解析中...',
+          description: 'シート情報を取得しています'
+        }
+      }
+    }
+
+    const message = getProcessingMessage()
+
     return (
       <div className="w-full max-w-4xl mx-auto">
         <Card className="border-2 shadow-lg">
           <CardContent className="p-8 text-center">
             <div className="space-y-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-              <h3 className="text-lg font-medium">Excelファイルを解析中...</h3>
-              <p className="text-muted-foreground">シート情報を取得しています</p>
+              <h3 className="text-lg font-medium">{message.title}</h3>
+              <p className="text-muted-foreground">{message.description}</p>
             </div>
           </CardContent>
         </Card>
@@ -310,9 +477,16 @@ const FileUploader: React.FC<FileUploaderProps> = ({
           <CardContent className="p-8 text-center">
             <div className="space-y-4">
               <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto" />
-              <h3 className="text-lg font-medium">シート選択完了</h3>
-              <p className="text-muted-foreground">
-                シート「{uploadState.selectedSheet}」が選択されました
+              <h3 className="text-lg font-medium">表選択完了</h3>
+              <div className="text-muted-foreground space-y-1">
+                <p>ファイル: <span className="font-medium">{uploadState.filename}</span></p>
+                <p>シート: <span className="font-medium">{uploadState.selectedSheet}</span></p>
+                {uploadState.selectedTable && (
+                  <p>表: <span className="font-medium">{uploadState.selectedTable}</span></p>
+                )}
+              </div>
+              <p className="text-sm text-gray-600">
+                選択された表のデータが正常に取得されました
               </p>
               <Button onClick={handleBackToUpload} variant="outline">
                 新しいファイルをアップロード

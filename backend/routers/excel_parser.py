@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Protocol, Tuple
 import pandas as pd
 import openpyxl
 import uuid
@@ -10,12 +10,444 @@ from datetime import datetime, timedelta
 import re
 import numpy as np
 from collections import Counter
+from abc import ABC, abstractmethod
 
 # ログ設定
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 router = APIRouter(prefix="/api", tags=["Excel Parser"])
+
+# 表検出関連のデータクラス
+class TableCandidate:
+    """検出された表の候補を表すクラス"""
+    def __init__(
+        self,
+        table_id: str,
+        sheet_name: str,
+        start_row: int,
+        end_row: int,
+        start_col: int,
+        end_col: int,
+        header_row: Optional[int] = None,
+        quality_score: float = 0.0,
+        data_density: float = 0.0,
+        row_count: int = 0,
+        col_count: int = 0,
+        estimated_records: int = 0,
+        headers: Optional[List[str]] = None,
+        sample_data: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        self.table_id = table_id
+        self.sheet_name = sheet_name
+        self.start_row = start_row
+        self.end_row = end_row
+        self.start_col = start_col
+        self.end_col = end_col
+        self.header_row = header_row
+        self.quality_score = quality_score
+        self.data_density = data_density
+        self.row_count = row_count
+        self.col_count = col_count
+        self.estimated_records = estimated_records
+        self.headers = headers or []
+        self.sample_data = sample_data or []
+        self.metadata = metadata or {}
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """辞書形式に変換"""
+        return {
+            'table_id': self.table_id,
+            'sheet_name': self.sheet_name,
+            'range': {
+                'start_row': self.start_row,
+                'end_row': self.end_row,
+                'start_col': self.start_col,
+                'end_col': self.end_col,
+                'excel_range': f"{openpyxl.utils.get_column_letter(self.start_col)}{self.start_row}:{openpyxl.utils.get_column_letter(self.end_col)}{self.end_row}"
+            },
+            'header_row': self.header_row,
+            'quality_score': round(self.quality_score, 3),
+            'data_density': round(self.data_density, 3),
+            'dimensions': {
+                'row_count': self.row_count,
+                'col_count': self.col_count,
+                'estimated_records': self.estimated_records
+            },
+            'headers': self.headers,
+            'sample_data': self.sample_data,
+            'metadata': self.metadata
+        }
+
+class TableDetector(ABC):
+    """表検出器の抽象基底クラス - 将来的なLLM置き換えに対応"""
+    
+    @abstractmethod
+    def detect_tables(
+        self, 
+        workbook_data: bytes, 
+        sheet_name: str,
+        min_rows: int = 3,
+        min_cols: int = 2,
+        max_tables: int = 10
+    ) -> List[TableCandidate]:
+        """
+        指定されたシート内の表を検出する
+        
+        Args:
+            workbook_data: Excelワークブックのバイナリデータ
+            sheet_name: 検出対象のシート名
+            min_rows: 表として認識する最小行数
+            min_cols: 表として認識する最小列数
+            max_tables: 検出する表の最大数
+            
+        Returns:
+            検出された表候補のリスト（品質スコア降順）
+        """
+        pass
+    
+    @abstractmethod
+    def get_detector_info(self) -> Dict[str, Any]:
+        """検出器の情報を返す"""
+        pass
+
+class StatisticalTableDetector(TableDetector):
+    """統計的手法による表検出器"""
+    
+    def __init__(self):
+        self.name = "Statistical Table Detector"
+        self.version = "1.0.0"
+    
+    def get_detector_info(self) -> Dict[str, Any]:
+        """検出器の情報を返す"""
+        return {
+            "name": self.name,
+            "version": self.version,
+            "type": "statistical",
+            "description": "統計的手法により表を検出。データ密度、連続性、ヘッダー特徴を分析"
+        }
+    
+    def detect_tables(
+        self, 
+        workbook_data: bytes, 
+        sheet_name: str,
+        min_rows: int = 3,
+        min_cols: int = 2,
+        max_tables: int = 10
+    ) -> List[TableCandidate]:
+        """統計的手法で表を検出"""
+        try:
+            workbook = openpyxl.load_workbook(BytesIO(workbook_data), read_only=True)
+            sheet = workbook[sheet_name]
+            
+            # データ領域を分析
+            data_regions = self._find_data_regions(sheet)
+            table_candidates = []
+            
+            for region_id, region in enumerate(data_regions):
+                # 各領域を表候補として評価
+                candidate = self._analyze_data_region(
+                    sheet, region, f"table_{region_id + 1}", sheet_name
+                )
+                
+                if candidate and candidate.row_count >= min_rows and candidate.col_count >= min_cols:
+                    table_candidates.append(candidate)
+            
+            # 品質スコアでソート
+            table_candidates.sort(key=lambda x: x.quality_score, reverse=True)
+            
+            workbook.close()
+            return table_candidates[:max_tables]
+            
+        except Exception as e:
+            logger.error(f"Error detecting tables in sheet {sheet_name}: {str(e)}")
+            return []
+    
+    def _find_data_regions(self, sheet) -> List[Dict[str, int]]:
+        """データ領域を検出する"""
+        regions = []
+        max_row = sheet.max_row or 1
+        max_col = sheet.max_column or 1
+        
+        # データ密度マップを作成
+        data_map = {}
+        for row in range(1, min(max_row + 1, 201)):  # 最大200行まで分析
+            for col in range(1, min(max_col + 1, 51)):  # 最大50列まで分析
+                cell_value = sheet.cell(row, col).value
+                has_data = (cell_value is not None and 
+                           str(cell_value).strip() != '' and 
+                           str(cell_value).strip() != '0')
+                data_map[(row, col)] = has_data
+        
+        # 連続するデータブロックを検出
+        visited = set()
+        
+        for row in range(1, min(max_row + 1, 201)):
+            for col in range(1, min(max_col + 1, 51)):
+                if (row, col) not in visited and data_map.get((row, col), False):
+                    region = self._expand_data_region(data_map, row, col, visited, max_row, max_col)
+                    if region and (region['end_row'] - region['start_row'] + 1) >= 3:
+                        regions.append(region)
+        
+        return regions
+    
+    def _expand_data_region(self, data_map, start_row, start_col, visited, max_row, max_col):
+        """データ領域を拡張する"""
+        # 領域の境界を探索
+        min_row, max_row_found = start_row, start_row
+        min_col, max_col_found = start_col, start_col
+        
+        # 行方向の拡張
+        for row in range(start_row, min(max_row + 1, 201)):
+            has_data_in_row = False
+            for col in range(start_col, min(max_col + 1, 51)):
+                if data_map.get((row, col), False):
+                    has_data_in_row = True
+                    max_col_found = max(max_col_found, col)
+                    break
+            if has_data_in_row:
+                max_row_found = row
+            else:
+                # 連続する2行以上空行があったら終了
+                if row > start_row + 1:
+                    break
+        
+        # 列方向の拡張
+        for col in range(start_col, min(max_col + 1, 51)):
+            has_data_in_col = False
+            for row in range(start_row, max_row_found + 1):
+                if data_map.get((row, col), False):
+                    has_data_in_col = True
+                    break
+            if has_data_in_col:
+                max_col_found = col
+            else:
+                break
+        
+        # 訪問済みマークを設定
+        for row in range(min_row, max_row_found + 1):
+            for col in range(min_col, max_col_found + 1):
+                visited.add((row, col))
+        
+        return {
+            'start_row': min_row,
+            'end_row': max_row_found,
+            'start_col': min_col,
+            'end_col': max_col_found
+        }
+    
+    def _analyze_data_region(self, sheet, region, table_id, sheet_name) -> Optional[TableCandidate]:
+        """データ領域を表として分析する"""
+        try:
+            start_row = region['start_row']
+            end_row = region['end_row']
+            start_col = region['start_col']
+            end_col = region['end_col']
+            
+            row_count = end_row - start_row + 1
+            col_count = end_col - start_col + 1
+            
+            # データ収集
+            data_matrix = []
+            for row in range(start_row, end_row + 1):
+                row_data = []
+                for col in range(start_col, end_col + 1):
+                    cell_value = sheet.cell(row, col).value
+                    row_data.append(cell_value)
+                data_matrix.append(row_data)
+            
+            # ヘッダー行を検出
+            header_row_idx = self._detect_header_row(data_matrix)
+            header_row = start_row + header_row_idx if header_row_idx is not None else None
+            
+            # ヘッダー取得
+            headers = []
+            if header_row_idx is not None:
+                header_data = data_matrix[header_row_idx]
+                headers = [str(cell) if cell is not None else f"列{i+1}" for i, cell in enumerate(header_data)]
+            else:
+                headers = [f"列{i+1}" for i in range(col_count)]
+            
+            # サンプルデータ取得（ヘッダー + 3行）
+            sample_data = []
+            data_start_idx = (header_row_idx + 1) if header_row_idx is not None else 0
+            
+            for i in range(data_start_idx, min(data_start_idx + 3, len(data_matrix))):
+                if i < len(data_matrix):
+                    row_dict = {}
+                    for j, header in enumerate(headers):
+                        if j < len(data_matrix[i]):
+                            value = data_matrix[i][j]
+                            row_dict[header] = str(value) if value is not None else ""
+                        else:
+                            row_dict[header] = ""
+                    sample_data.append(row_dict)
+            
+            # データ密度計算
+            total_cells = row_count * col_count
+            data_cells = sum(1 for row in data_matrix for cell in row 
+                           if cell is not None and str(cell).strip() != '')
+            data_density = data_cells / total_cells if total_cells > 0 else 0
+            
+            # 品質スコア計算
+            quality_score = self._calculate_quality_score(
+                data_matrix, row_count, col_count, data_density, header_row_idx
+            )
+            
+            # 推定レコード数
+            estimated_records = row_count - 1 if header_row_idx is not None else row_count
+            
+            return TableCandidate(
+                table_id=table_id,
+                sheet_name=sheet_name,
+                start_row=start_row,
+                end_row=end_row,
+                start_col=start_col,
+                end_col=end_col,
+                header_row=header_row,
+                quality_score=quality_score,
+                data_density=data_density,
+                row_count=row_count,
+                col_count=col_count,
+                estimated_records=estimated_records,
+                headers=headers,
+                sample_data=sample_data,
+                metadata={
+                    'detection_method': 'statistical',
+                    'data_cells': data_cells,
+                    'total_cells': total_cells
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error analyzing data region: {str(e)}")
+            return None
+    
+    def _detect_header_row(self, data_matrix) -> Optional[int]:
+        """ヘッダー行を検出する"""
+        if len(data_matrix) < 2:
+            return None
+        
+        best_header_idx = None
+        best_score = 0
+        
+        # 最初の3行までをヘッダー候補として分析
+        for row_idx in range(min(3, len(data_matrix))):
+            row = data_matrix[row_idx]
+            
+            # 文字列の割合を計算
+            string_count = 0
+            non_empty_count = 0
+            
+            for cell in row:
+                if cell is not None and str(cell).strip() != '':
+                    non_empty_count += 1
+                    # 数値でない場合は文字列とみなす
+                    try:
+                        float(str(cell).replace(',', ''))
+                    except (ValueError, TypeError):
+                        string_count += 1
+            
+            if non_empty_count == 0:
+                continue
+            
+            string_ratio = string_count / non_empty_count
+            
+            # ヘッダースコア（文字列率 + データ充填率）
+            fill_ratio = non_empty_count / len(row)
+            header_score = string_ratio * 0.7 + fill_ratio * 0.3
+            
+            if header_score > best_score and string_ratio >= 0.5:
+                best_score = header_score
+                best_header_idx = row_idx
+        
+        return best_header_idx
+    
+    def _calculate_quality_score(self, data_matrix, row_count, col_count, data_density, header_row_idx) -> float:
+        """表の品質スコアを計算"""
+        score = 0.0
+        
+        # データ密度による評価 (0-0.3)
+        density_score = min(data_density * 3, 0.3)
+        score += density_score
+        
+        # サイズによる評価 (0-0.3)
+        size_score = min((row_count * col_count) / 100, 0.3)
+        score += size_score
+        
+        # ヘッダーの有無による評価 (0-0.2)
+        if header_row_idx is not None:
+            score += 0.2
+        
+        # データの一貫性による評価 (0-0.2)
+        consistency_score = self._calculate_data_consistency(data_matrix, header_row_idx)
+        score += consistency_score
+        
+        return min(score, 1.0)
+    
+    def _calculate_data_consistency(self, data_matrix, header_row_idx) -> float:
+        """データの一貫性スコアを計算"""
+        if len(data_matrix) <= 1:
+            return 0.0
+        
+        data_start = (header_row_idx + 1) if header_row_idx is not None else 0
+        if data_start >= len(data_matrix):
+            return 0.0
+        
+        col_consistency_scores = []
+        
+        for col_idx in range(len(data_matrix[0])):
+            col_data = []
+            for row_idx in range(data_start, len(data_matrix)):
+                if col_idx < len(data_matrix[row_idx]):
+                    cell = data_matrix[row_idx][col_idx]
+                    if cell is not None and str(cell).strip() != '':
+                        col_data.append(cell)
+            
+            if len(col_data) < 2:
+                continue
+            
+            # データ型の一貫性を確認
+            numeric_count = 0
+            date_count = 0
+            
+            for value in col_data:
+                str_value = str(value).strip()
+                
+                # 数値チェック
+                try:
+                    float(str_value.replace(',', ''))
+                    numeric_count += 1
+                    continue
+                except (ValueError, TypeError):
+                    pass
+                
+                # 日付チェック
+                if re.match(r'\d{4}[-/]\d{1,2}[-/]\d{1,2}', str_value):
+                    date_count += 1
+            
+            total_values = len(col_data)
+            if total_values > 0:
+                numeric_ratio = numeric_count / total_values
+                date_ratio = date_count / total_values
+                
+                # 一貫性スコア（1種類のデータ型が80%以上なら高評価）
+                if numeric_ratio >= 0.8 or date_ratio >= 0.8:
+                    col_consistency_scores.append(1.0)
+                elif numeric_ratio >= 0.6 or date_ratio >= 0.6:
+                    col_consistency_scores.append(0.6)
+                else:
+                    col_consistency_scores.append(0.3)
+        
+        if not col_consistency_scores:
+            return 0.0
+        
+        avg_consistency = sum(col_consistency_scores) / len(col_consistency_scores)
+        return min(avg_consistency * 0.2, 0.2)
+
+# グローバル表検出器インスタンス
+default_table_detector = StatisticalTableDetector()
 
 # セッション管理用のグローバル変数
 session_data: Dict[str, Dict[str, Any]] = {}
@@ -738,3 +1170,209 @@ async def list_active_sessions():
         "active_sessions": sessions_info,
         "total_count": len(sessions_info)
     }
+
+@router.post("/excel-sheet-tables/{session_id}/{sheet_name}")
+async def detect_tables_in_sheet(
+    session_id: str = Path(...),
+    sheet_name: str = Path(...),
+    min_rows: int = 3,
+    min_cols: int = 2,
+    max_tables: int = 10
+):
+    """指定されたシート内の表を検出するエンドポイント"""
+    try:
+        # セッションを取得
+        session = get_session_data(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="セッションが見つからないか期限切れです")
+        
+        # ワークブックデータを取得
+        workbook_data = session.get('raw_workbook_data')
+        if not workbook_data:
+            raise HTTPException(status_code=404, detail="Excelワークブックデータが見つかりません")
+        
+        # シート名をデコード（URLエンコードされている可能性があるため）
+        import urllib.parse
+        decoded_sheet_name = urllib.parse.unquote(sheet_name)
+        
+        logger.info(f"Detecting tables in sheet '{decoded_sheet_name}' (session: {session_id})")
+        
+        # 表検出を実行
+        table_candidates = default_table_detector.detect_tables(
+            workbook_data=workbook_data,
+            sheet_name=decoded_sheet_name,
+            min_rows=min_rows,
+            min_cols=min_cols,
+            max_tables=max_tables
+        )
+        
+        # 検出された表をセッションに保存
+        session['detected_tables'] = {
+            'sheet_name': decoded_sheet_name,
+            'tables': [table.to_dict() for table in table_candidates],
+            'detection_info': default_table_detector.get_detector_info(),
+            'detection_time': datetime.now().isoformat()
+        }
+        
+        # レスポンスデータを構築
+        response_data = {
+            "sheet_name": decoded_sheet_name,
+            "total_tables": len(table_candidates),
+            "tables": [table.to_dict() for table in table_candidates],
+            "detection_info": default_table_detector.get_detector_info()
+        }
+        
+        return {
+            "status": "success",
+            "message": f"シート '{decoded_sheet_name}' で {len(table_candidates)} 個の表を検出しました",
+            "session_id": session_id,
+            "data": response_data
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error detecting tables in sheet {sheet_name} (session: {session_id}): {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"表検出中にエラーが発生しました: {str(e)}"
+        )
+
+@router.post("/select-table/{session_id}/{table_id}")
+async def select_table(
+    session_id: str = Path(...),
+    table_id: str = Path(...)
+):
+    """選択された表のデータを取得し、最終処理を行うエンドポイント"""
+    try:
+        # セッションを取得
+        session = get_session_data(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="セッションが見つからないか期限切れです")
+        
+        # 検出済み表データを取得
+        detected_tables = session.get('detected_tables')
+        if not detected_tables:
+            raise HTTPException(status_code=404, detail="検出済み表データが見つかりません")
+        
+        # 指定された表を探す
+        selected_table = None
+        for table_data in detected_tables['tables']:
+            if table_data['table_id'] == table_id:
+                selected_table = table_data
+                break
+        
+        if not selected_table:
+            raise HTTPException(status_code=404, detail=f"表ID '{table_id}' が見つかりません")
+        
+        # ワークブックデータから指定範囲のデータを抽出
+        workbook_data = session.get('raw_workbook_data')
+        if not workbook_data:
+            raise HTTPException(status_code=404, detail="Excelワークブックデータが見つかりません")
+        
+        # 表の全データを取得
+        full_table_data = extract_table_data(
+            workbook_data, 
+            detected_tables['sheet_name'], 
+            selected_table
+        )
+        
+        # セッションに最終データを保存
+        session['selected_table'] = {
+            'table_info': selected_table,
+            'full_data': full_table_data,
+            'selection_time': datetime.now().isoformat()
+        }
+        
+        # ファイル情報を更新
+        file_info = session.get('file_info', {})
+        file_info.update({
+            'selected_sheet': detected_tables['sheet_name'],
+            'selected_table_id': table_id,
+            'final_rows': len(full_table_data['records']),
+            'final_columns': len(full_table_data['headers'])
+        })
+        session['file_info'] = file_info
+        
+        return {
+            "status": "success",
+            "message": f"表 '{table_id}' を選択しました",
+            "session_id": session_id,
+            "data": {
+                "table_info": selected_table,
+                "headers": full_table_data['headers'],
+                "total_records": len(full_table_data['records']),
+                "sample_records": full_table_data['records'][:10],  # 最初の10件のみ
+                "data_types": full_table_data.get('data_types', {}),
+                "quality_info": full_table_data.get('quality_info', {})
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error selecting table {table_id} (session: {session_id}): {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"表選択中にエラーが発生しました: {str(e)}"
+        )
+
+def extract_table_data(workbook_data: bytes, sheet_name: str, table_info: Dict[str, Any]) -> Dict[str, Any]:
+    """指定された表の全データを抽出する"""
+    try:
+        workbook = openpyxl.load_workbook(BytesIO(workbook_data))
+        sheet = workbook[sheet_name]
+        
+        range_info = table_info['range']
+        start_row = range_info['start_row']
+        end_row = range_info['end_row']
+        start_col = range_info['start_col']
+        end_col = range_info['end_col']
+        header_row = table_info.get('header_row')
+        headers = table_info.get('headers', [])
+        
+        # 全データを収集
+        all_data = []
+        for row in range(start_row, end_row + 1):
+            row_data = []
+            for col in range(start_col, end_col + 1):
+                cell_value = sheet.cell(row, col).value
+                row_data.append(cell_value)
+            all_data.append(row_data)
+        
+        # ヘッダー行がある場合はデータ部分のみ抽出
+        records = []
+        data_start_idx = 1 if header_row else 0
+        
+        for row_idx in range(data_start_idx, len(all_data)):
+            record = {}
+            for col_idx, header in enumerate(headers):
+                if col_idx < len(all_data[row_idx]):
+                    value = all_data[row_idx][col_idx]
+                    record[header] = str(value) if value is not None else ""
+                else:
+                    record[header] = ""
+            records.append(record)
+        
+        # データ型分析
+        if records:
+            df = pd.DataFrame(records)
+            data_types = analyze_data_types(df)
+            quality_report = analyze_data_quality(df)
+        else:
+            data_types = {}
+            quality_report = {}
+        
+        workbook.close()
+        
+        return {
+            'headers': headers,
+            'records': records,
+            'data_types': data_types,
+            'quality_info': quality_report,
+            'total_records': len(records)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error extracting table data: {str(e)}")
+        raise
