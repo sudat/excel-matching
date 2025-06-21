@@ -39,10 +39,25 @@ interface UploadResponse {
   total_files: number;
 }
 
+interface SheetInfo {
+  name: string;
+  row_count: number;
+  col_count: number;
+  has_data: boolean;
+  data_range: string | null;
+  data_density: number;
+  estimated_data_cells: number;
+}
+
 export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [excelSheets, setExcelSheets] = useState<{
+    sessionId: string;
+    filename: string;
+    sheets: SheetInfo[];
+  } | null>(null);
 
   const handleUpload = async (
     title: string,
@@ -85,6 +100,31 @@ export default function Home() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleExcelSheetsReceived = (sessionId: string, filename: string, sheets: SheetInfo[]) => {
+    console.log('Excel sheets received:', { sessionId, filename, sheets });
+    setExcelSheets({ sessionId, filename, sheets });
+  };
+
+  const handleSheetSelected = (sessionId: string, sheetName: string) => {
+    console.log('Sheet selected:', { sessionId, sheetName });
+    // TODO: ここで選択されたシートに対する次の処理を実装
+    setError(null);
+    // 一時的に成功メッセージを表示
+    setUploadResult({
+      status: 'success',
+      message: `シート「${sheetName}」が選択されました`,
+      business_request_id: sessionId,
+      uploaded_files: [{
+        file_id: sessionId,
+        filename: excelSheets?.filename || 'Unknown',
+        file_size: 0,
+        file_type: 'excel',
+        storage_path: ''
+      }],
+      total_files: 1
+    });
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -180,7 +220,13 @@ export default function Home() {
 
         {/* アップロードセクション */}
         <section className="mb-16">
-          <FileUploader onUpload={handleUpload} isUploading={isUploading} />
+          <FileUploader 
+            onUpload={handleUpload} 
+            onExcelSheetsReceived={handleExcelSheetsReceived}
+            onSheetSelected={handleSheetSelected}
+            isUploading={isUploading}
+            apiBaseUrl={API_BASE_URL}
+          />
 
           {/* エラー表示 */}
           {error && (

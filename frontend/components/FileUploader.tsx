@@ -9,23 +9,52 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Upload, File, X, AlertCircle, CheckCircle2, FileSpreadsheet } from 'lucide-react'
+import { SheetSelector } from './SheetSelector'
 
 interface UploadedFile {
   file: File
   id: string
 }
 
-interface FileUploaderProps {
-  onUpload: (title: string, description: string, files: File[]) => Promise<void>
-  isUploading: boolean
+interface SheetInfo {
+  name: string
+  row_count: number
+  col_count: number
+  has_data: boolean
+  data_range: string | null
+  data_density: number
+  estimated_data_cells: number
 }
 
-const FileUploader: React.FC<FileUploaderProps> = ({ onUpload, isUploading }) => {
+interface UploadState {
+  step: 'upload' | 'select-sheet' | 'processing' | 'complete'
+  sessionId?: string
+  filename?: string
+  availableSheets?: SheetInfo[]
+  selectedSheet?: string
+}
+
+interface FileUploaderProps {
+  onUpload: (title: string, description: string, files: File[]) => Promise<void>
+  onExcelSheetsReceived?: (sessionId: string, filename: string, sheets: SheetInfo[]) => void
+  onSheetSelected?: (sessionId: string, sheetName: string) => void
+  isUploading: boolean
+  apiBaseUrl?: string
+}
+
+const FileUploader: React.FC<FileUploaderProps> = ({ 
+  onUpload, 
+  onExcelSheetsReceived,
+  onSheetSelected,
+  isUploading,
+  apiBaseUrl = 'http://localhost:8000'
+}) => {
   const [dragActive, setDragActive] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<UploadedFile[]>([])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [errors, setErrors] = useState<string[]>([])
+  const [uploadState, setUploadState] = useState<UploadState>({ step: 'upload' })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 許可されるファイルタイプ
@@ -144,6 +173,70 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onUpload, isUploading }) =>
     return <FileSpreadsheet className="h-5 w-5 text-green-600" />
   }
 
+  const isExcelFile = (file: File): boolean => {
+    const extension = file.name.split('.').pop()?.toLowerCase()
+    return ['xlsx', 'xls'].includes(extension || '')
+  }
+
+  const handleExcelSheetsUpload = async (file: File) => {
+    try {
+      setUploadState({ step: 'processing' })
+      
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch(`${apiBaseUrl}/api/parse-excel-sheets`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      
+      if (result.status === 'success') {
+        setUploadState({
+          step: 'select-sheet',
+          sessionId: result.session_id,
+          filename: result.data.filename,
+          availableSheets: result.data.sheets
+        })
+        
+        if (onExcelSheetsReceived) {
+          onExcelSheetsReceived(result.session_id, result.data.filename, result.data.sheets)
+        }
+      } else {
+        throw new Error(result.message || 'シート情報の取得に失敗しました')
+      }
+    } catch (error) {
+      console.error('Excel sheets upload failed:', error)
+      setErrors([error instanceof Error ? error.message : 'Excelファイルの処理に失敗しました'])
+      setUploadState({ step: 'upload' })
+    }
+  }
+
+  const handleSheetSelection = (sheetName: string) => {
+    if (uploadState.sessionId) {
+      setUploadState(prev => ({
+        ...prev,
+        selectedSheet: sheetName,
+        step: 'complete'
+      }))
+      
+      if (onSheetSelected) {
+        onSheetSelected(uploadState.sessionId, sheetName)
+      }
+    }
+  }
+
+  const handleBackToUpload = () => {
+    setUploadState({ step: 'upload' })
+    setSelectedFiles([])
+    setErrors([])
+  }
+
   const handleSubmit = async () => {
     if (!title.trim()) {
       setErrors(['業務依頼のタイトルを入力してください'])
@@ -157,6 +250,14 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onUpload, isUploading }) =>
 
     const files = selectedFiles.map(sf => sf.file)
     
+    // Excelファイルが含まれている場合の特別処理
+    const excelFiles = files.filter(isExcelFile)
+    if (excelFiles.length === 1 && files.length === 1) {
+      // 単一のExcelファイルの場合はシート選択フローへ
+      await handleExcelSheetsUpload(excelFiles[0])
+      return
+    }
+    
     try {
       await onUpload(title, description, files)
       // アップロード成功後、フォームをリセット
@@ -164,9 +265,63 @@ const FileUploader: React.FC<FileUploaderProps> = ({ onUpload, isUploading }) =>
       setDescription('')
       setSelectedFiles([])
       setErrors([])
+      setUploadState({ step: 'upload' })
     } catch (error) {
       console.error('Upload failed:', error)
     }
+  }
+
+  // シート選択画面を表示
+  if (uploadState.step === 'select-sheet' && uploadState.availableSheets && uploadState.sessionId && uploadState.filename) {
+    return (
+      <SheetSelector
+        filename={uploadState.filename}
+        sheets={uploadState.availableSheets}
+        sessionId={uploadState.sessionId}
+        onSelectSheet={handleSheetSelection}
+        onBack={handleBackToUpload}
+        isLoading={isUploading}
+      />
+    )
+  }
+
+  // 処理中画面
+  if (uploadState.step === 'processing') {
+    return (
+      <div className="w-full max-w-4xl mx-auto">
+        <Card className="border-2 shadow-lg">
+          <CardContent className="p-8 text-center">
+            <div className="space-y-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+              <h3 className="text-lg font-medium">Excelファイルを解析中...</h3>
+              <p className="text-muted-foreground">シート情報を取得しています</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // 完了画面
+  if (uploadState.step === 'complete') {
+    return (
+      <div className="w-full max-w-4xl mx-auto">
+        <Card className="border-2 shadow-lg">
+          <CardContent className="p-8 text-center">
+            <div className="space-y-4">
+              <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto" />
+              <h3 className="text-lg font-medium">シート選択完了</h3>
+              <p className="text-muted-foreground">
+                シート「{uploadState.selectedSheet}」が選択されました
+              </p>
+              <Button onClick={handleBackToUpload} variant="outline">
+                新しいファイルをアップロード
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

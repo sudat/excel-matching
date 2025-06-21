@@ -1,10 +1,19 @@
-test:backend (main)$ uvicorn main:app --reload --port 8000 --host 0.0.0.0
-INFO:     Will watch for changes in these directories: ['/usr/local/src/dev/wsl/jfr/excel-matching/backend']
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [69537] using StatReload
-INFO:     Started server process [69539]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-Skipping data after last boundary
-Upload error for 仕訳検索_20240101-20241231_20250618_123950.csv: {'statusCode': 400, 'error': InvalidKey, 'message': Invalid key: 5790145a-4cc6-4fa6-a363-57d6f20a7f7f/仕訳検索_20240101-20241231_20250618_123950.csv}
-INFO:     127.0.0.1:55412 - "POST /upload/business-request HTTP/1.1" 500 Internal Server Error
+Error: HTTP error! status: 404
+
+components/FileUploader.tsx (192:15) @ handleExcelSheetsUpload
+
+
+  190 |
+  191 |       if (!response.ok) {
+> 192 |         throw new Error(`HTTP error! status: ${response.status}`)
+      |               ^
+  193 |       }
+  194 |
+  195 |       const result = await response.json()
+Call Stack
+2
+
+handleExcelSheetsUpload
+components/FileUploader.tsx (192:15)
+async handleSubmit
+components/FileUploader.tsx (255:7)
