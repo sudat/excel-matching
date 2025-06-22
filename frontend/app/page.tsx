@@ -18,7 +18,9 @@ import {
   FileSpreadsheet,
   ArrowRight,
   Star,
+  Database,
 } from "lucide-react";
+import Link from "next/link";
 
 const API_BASE_URL =
   process.env.NODE_ENV === "development"
@@ -174,6 +176,12 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center space-x-2">
+              <Link href="/journal-data">
+                <Button variant="outline" size="sm">
+                  <Database className="h-4 w-4 mr-2" />
+                  仕訳データ管理
+                </Button>
+              </Link>
               <Badge variant="secondary" className="hidden sm:flex">
                 v0.1.0
               </Badge>
