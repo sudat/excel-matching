@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from pinecone import Pinecone
-from routers import upload, excel_parser
+from routers import upload, excel_parser, journal_data
 from database import db_manager
 import os
 import psycopg2
@@ -74,6 +74,7 @@ app.add_middleware(
 # ルーターを追加
 app.include_router(upload.router)
 app.include_router(excel_parser.router)
+app.include_router(journal_data.router)
 
 
 @app.get("/")
