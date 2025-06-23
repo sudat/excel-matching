@@ -49,6 +49,7 @@ interface UploadTabProps {
   onDragOver: (event: React.DragEvent) => void;
   onDrop: (event: React.DragEvent) => void;
   setError: (error: string | null) => void;
+  fileInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 export default function UploadTab({
@@ -67,6 +68,7 @@ export default function UploadTab({
   onDragOver,
   onDrop,
   setError,
+  fileInputRef,
 }: UploadTabProps) {
   return (
     <>
@@ -84,7 +86,10 @@ export default function UploadTab({
           {/* 会計期間設定 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="fiscal-year" className="flex items-center space-x-1">
+              <Label
+                htmlFor="fiscal-year"
+                className="flex items-center space-x-1"
+              >
                 <Calendar className="h-4 w-4" />
                 <span>会計年度</span>
               </Label>
@@ -129,6 +134,7 @@ export default function UploadTab({
                 onChange={onFileSelect}
                 className="hidden"
                 id="file-input"
+                ref={fileInputRef}
               />
               <label htmlFor="file-input">
                 <Button variant="outline" asChild>
@@ -161,7 +167,9 @@ export default function UploadTab({
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        setSelectedFiles(selectedFiles.filter((_, i) => i !== index));
+                        setSelectedFiles(
+                          selectedFiles.filter((_, i) => i !== index)
+                        );
                       }}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -217,7 +225,9 @@ export default function UploadTab({
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="font-medium text-gray-700">処理成功:</span>
-                    <span className="ml-2">{uploadResult.processed_count}件</span>
+                    <span className="ml-2">
+                      {uploadResult.processed_count}件
+                    </span>
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">処理失敗:</span>
@@ -225,7 +235,9 @@ export default function UploadTab({
                   </div>
                 </div>
                 <div className="mt-2 text-sm">
-                  <span className="font-medium text-gray-700">Pineconeインデックス:</span>
+                  <span className="font-medium text-gray-700">
+                    Pineconeインデックス:
+                  </span>
                   <span className="ml-2 font-mono text-xs bg-gray-100 px-2 py-1 rounded">
                     {uploadResult.pinecone_index_name}
                   </span>

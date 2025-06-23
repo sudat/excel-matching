@@ -51,6 +51,7 @@ function JournalDataPageContent() {
     handleDrop,
     handleOverwriteConfirm,
     handleOverwriteCancel,
+    fileInputRef,
   } = useFileUpload();
 
   const {
@@ -136,6 +137,7 @@ function JournalDataPageContent() {
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             setError={() => {}} // エラーはカスタムフック内で管理
+            fileInputRef={fileInputRef}
           />
         </TabsContent>
 

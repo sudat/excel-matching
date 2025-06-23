@@ -107,9 +107,14 @@ async def save_entries_to_supabase(
 ) -> dict:
     """仕訳データをSupabaseに保存"""
     if not supabase:
-        raise HTTPException(
-            status_code=500, detail="Supabaseクライアントが設定されていません"
-        )
+        # HTTPExceptionを投げる代わりに、エラー情報を返す
+        logger.error("Supabaseクライアントが設定されていません")
+        return {
+            "success_count": 0,
+            "failed_count": len(entries),
+            "total_processed": len(entries),
+            "error": "Supabaseクライアントが設定されていません",
+        }
 
     success_count = 0
     failed_count = 0
@@ -127,10 +132,23 @@ async def save_entries_to_supabase(
                 f"既存データを削除しました: 年度={fiscal_year}, 月={fiscal_month}"
             )
 
-        # データを挿入
+        # 全データを事前に変換
+        supabase_data_list = []
+        conversion_errors = 0
+
         for entry in entries:
             try:
                 # Supabase用のデータ形式に変換
+                # entry.dict()の代わりにjson_encodersを適用したJSON互換形式を使用
+                original_data_dict = entry.dict()
+                # datetimeをISO形式の文字列に変換
+                if "date" in original_data_dict:
+                    original_data_dict["date"] = entry.date.strftime("%Y-%m-%d")
+                # Decimalをfloatに変換
+                for field in ["base_amount", "tax_amount", "total_amount"]:
+                    if field in original_data_dict:
+                        original_data_dict[field] = float(original_data_dict[field])
+
                 supabase_data = {
                     "entry_date": entry.date.strftime("%Y-%m-%d"),
                     "amount": float(entry.total_amount),
@@ -142,7 +160,7 @@ async def save_entries_to_supabase(
                     "sub_account": entry.sub_account_name or "",
                     "partner": entry.customer_name or "",
                     "detail_description": entry.detail_description or "",
-                    "original_data": entry.dict(),
+                    "original_data": original_data_dict,
                     "fiscal_year": fiscal_year,
                     "fiscal_month": fiscal_month,
                     "journal_number": entry.journal_number,
@@ -152,20 +170,75 @@ async def save_entries_to_supabase(
                     "tax_category": entry.tax_category,
                 }
 
-                insert_response = (
-                    supabase.table("journal_entries").insert(supabase_data).execute()
-                )
-                success_count += 1
+                supabase_data_list.append(supabase_data)
 
             except Exception as e:
-                logger.error(
-                    f"Supabaseへの挿入に失敗: {entry.journal_number}, エラー: {e}"
+                logger.error(f"データ変換に失敗: {entry.journal_number}, エラー: {e}")
+                conversion_errors += 1
+
+        # バッチ挿入の実行（適切なバッチサイズで分割）
+        batch_size = 100  # Supabaseの推奨バッチサイズ
+        total_batches = (len(supabase_data_list) + batch_size - 1) // batch_size
+
+        logger.info(
+            f"バッチ挿入開始: {len(supabase_data_list)}件を{total_batches}バッチで処理"
+        )
+
+        for i in range(0, len(supabase_data_list), batch_size):
+            batch_data = supabase_data_list[i : i + batch_size]
+            batch_num = (i // batch_size) + 1
+
+            try:
+                insert_response = (
+                    supabase.table("journal_entries").insert(batch_data).execute()
                 )
-                failed_count += 1
+                batch_success = len(batch_data)
+                success_count += batch_success
+                logger.info(
+                    f"バッチ {batch_num}/{total_batches} 完了: {batch_success}件挿入"
+                )
+
+            except Exception as e:
+                logger.error(f"バッチ {batch_num}/{total_batches} の挿入に失敗: {e}")
+                # バッチ全体が失敗した場合、そのバッチの件数を失敗としてカウント
+                batch_failed = len(batch_data)
+                failed_count += batch_failed
+
+                # 個別挿入でリトライ（オプション：より詳細なエラー情報が必要な場合）
+                if batch_failed <= 10:  # 小さなバッチの場合のみリトライ
+                    logger.info(f"バッチ失敗のため個別挿入でリトライ: {batch_failed}件")
+                    individual_success = 0
+                    for single_data in batch_data:
+                        try:
+                            supabase.table("journal_entries").insert(
+                                single_data
+                            ).execute()
+                            individual_success += 1
+                        except Exception as individual_error:
+                            logger.error(
+                                f"個別挿入も失敗: {single_data.get('journal_number', 'unknown')}, エラー: {individual_error}"
+                            )
+
+                    # 成功・失敗数を調整
+                    failed_count -= batch_failed  # バッチ失敗分を戻す
+                    success_count += individual_success
+                    failed_count += batch_failed - individual_success
+
+        # 変換エラーも失敗数に追加
+        failed_count += conversion_errors
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Supabaseへの保存に失敗: {str(e)}")
+        # HTTPExceptionを投げる代わりに、エラー情報を返す
+        logger.error(f"Supabaseへの保存処理中にエラーが発生: {str(e)}")
+        return {
+            "success_count": success_count,
+            "failed_count": failed_count
+            + (len(entries) - success_count - failed_count),
+            "total_processed": len(entries),
+            "error": str(e),
+        }
 
+    logger.info(f"バッチ挿入完了: 成功={success_count}, 失敗={failed_count}")
     return {
         "success_count": success_count,
         "failed_count": failed_count,
@@ -178,14 +251,26 @@ async def generate_embeddings_and_store_to_pinecone(
 ) -> dict:
     """エンベディングを生成してPineconeに保存"""
     if not pc:
-        raise HTTPException(
-            status_code=500, detail="Pineconeクライアントが設定されていません"
-        )
+        logger.error("Pineconeクライアントが設定されていません")
+        return {
+            "index_name": "journal-entries",
+            "success_count": 0,
+            "failed_count": len(entries),
+            "total_vectors": 0,
+            "index_stats": {},
+            "error": "Pineconeクライアントが設定されていません",
+        }
 
     if not GEMINI_API_KEY:
-        raise HTTPException(
-            status_code=500, detail="Gemini APIキーが設定されていません"
-        )
+        logger.error("Gemini APIキーが設定されていません")
+        return {
+            "index_name": "journal-entries",
+            "success_count": 0,
+            "failed_count": len(entries),
+            "total_vectors": 0,
+            "index_stats": {},
+            "error": "Gemini APIキーが設定されていません",
+        }
 
     index_name = "journal-entries"
 
@@ -205,9 +290,11 @@ async def generate_embeddings_and_store_to_pinecone(
         # インデックスに接続
         index = pc.Index(index_name)
 
-        # エンベディング生成とアップサート
-        success_count = 0
-        failed_count = 0
+        # 全データのエンベディングを事前に生成
+        vectors_to_upsert = []
+        embedding_errors = 0
+
+        logger.info(f"エンベディング生成開始: {len(entries)}件のデータを処理")
 
         for entry in entries:
             try:
@@ -231,31 +318,135 @@ async def generate_embeddings_and_store_to_pinecone(
                     }
                 )
 
-                # Pineconeにアップサート
+                # ベクトルIDを生成
                 vector_id = f"{fiscal_year}_{fiscal_month}_{entry.journal_number}_{entry.line_number}"
-                index.upsert([(vector_id, embedding_vector, metadata)])
 
-                success_count += 1
+                # バッチ用のタプルを追加
+                vectors_to_upsert.append((vector_id, embedding_vector, metadata))
 
             except Exception as e:
                 logger.error(
-                    f"エンベディング生成またはPinecone保存に失敗: {entry.journal_number}, エラー: {e}"
+                    f"エンベディング生成に失敗: {entry.journal_number}, エラー: {e}"
                 )
-                failed_count += 1
+                embedding_errors += 1
+
+        # バッチアップサートの実行（適切なバッチサイズで分割）
+        batch_size = 100  # Pineconeの推奨バッチサイズ
+        total_batches = (len(vectors_to_upsert) + batch_size - 1) // batch_size
+        success_count = 0
+        failed_count = 0
+
+        logger.info(
+            f"Pineconeバッチアップサート開始: {len(vectors_to_upsert)}件を{total_batches}バッチで処理"
+        )
+
+        for i in range(0, len(vectors_to_upsert), batch_size):
+            batch_vectors = vectors_to_upsert[i : i + batch_size]
+            batch_num = (i // batch_size) + 1
+
+            try:
+                # バッチでアップサート
+                index.upsert(batch_vectors)
+                batch_success = len(batch_vectors)
+                success_count += batch_success
+                logger.info(
+                    f"Pineconeバッチ {batch_num}/{total_batches} 完了: {batch_success}件アップサート"
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Pineconeバッチ {batch_num}/{total_batches} の処理に失敗: {e}"
+                )
+                # バッチ全体が失敗した場合、そのバッチの件数を失敗としてカウント
+                batch_failed = len(batch_vectors)
+                failed_count += batch_failed
+
+                # 個別アップサートでリトライ（オプション：小さなバッチの場合のみ）
+                if batch_failed <= 10:  # 小さなバッチの場合のみリトライ
+                    logger.info(
+                        f"Pineconeバッチ失敗のため個別アップサートでリトライ: {batch_failed}件"
+                    )
+                    individual_success = 0
+                    for single_vector in batch_vectors:
+                        try:
+                            index.upsert([single_vector])
+                            individual_success += 1
+                        except Exception as individual_error:
+                            logger.error(
+                                f"Pinecone個別アップサートも失敗: {single_vector[0]}, エラー: {individual_error}"
+                            )
+
+                    # 成功・失敗数を調整
+                    failed_count -= batch_failed  # バッチ失敗分を戻す
+                    success_count += individual_success
+                    failed_count += batch_failed - individual_success
+
+        # エンベディング生成エラーも失敗数に追加
+        failed_count += embedding_errors
 
         # インデックス統計情報を取得
         stats = index.describe_index_stats()
 
+        # statsがNoneの場合のフォールバック処理
+        if stats is None:
+            logger.warning("Pineconeのindex統計情報が取得できませんでした")
+            stats = {}
+
+        # statsを辞書形式に変換（Pineconeのstatsオブジェクトを通常の辞書に）
+        stats_dict = {}
+        if hasattr(stats, "__dict__"):
+            # オブジェクトの場合、dictに変換
+            stats_dict = {
+                k: v for k, v in stats.__dict__.items() if not k.startswith("_")
+            }
+        elif isinstance(stats, dict):
+            stats_dict = stats
+        else:
+            logger.warning(f"予期しないstatsの型: {type(stats)}")
+            stats_dict = {"raw_stats": str(stats)}
+
+        # ネストされたオブジェクトも辞書に変換
+        def convert_to_dict(obj):
+            if hasattr(obj, "__dict__"):
+                return {
+                    k: convert_to_dict(v)
+                    for k, v in obj.__dict__.items()
+                    if not k.startswith("_")
+                }
+            elif isinstance(obj, dict):
+                return {k: convert_to_dict(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [convert_to_dict(item) for item in obj]
+            else:
+                return obj
+
+        stats_dict = convert_to_dict(stats_dict)
+
+        logger.info(
+            f"Pineconeバッチアップサート完了: 成功={success_count}, 失敗={failed_count}"
+        )
         return {
             "index_name": index_name,
             "success_count": success_count,
             "failed_count": failed_count,
-            "total_vectors": stats.get("total_vector_count", 0),
-            "index_stats": stats,
+            "total_vectors": (
+                stats_dict.get("total_vector_count", 0)
+                if isinstance(stats_dict, dict)
+                else 0
+            ),
+            "index_stats": stats_dict,
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Pinecone処理に失敗: {str(e)}")
+        logger.error(f"Pinecone処理に失敗: {str(e)}")
+        return {
+            "index_name": index_name,
+            "success_count": 0,
+            "failed_count": len(entries),
+            "total_vectors": 0,
+            "index_stats": {},
+            "error": str(e),
+        }
 
 
 @router.post("/register-journal-data", response_model=JournalDataRegistrationResponse)
@@ -372,6 +563,10 @@ async def register_journal_data(
             f"Supabase保存完了: 成功={supabase_result['success_count']}, 失敗={supabase_result['failed_count']}"
         )
 
+        # Supabase保存でエラーがあった場合の処理
+        if "error" in supabase_result:
+            logger.warning(f"Supabase保存時にエラー: {supabase_result['error']}")
+
         # Step 3: Pineconeにエンベディングを保存
         logger.info("Pineconeへのエンベディング保存を開始...")
         pinecone_result = await generate_embeddings_and_store_to_pinecone(
@@ -381,6 +576,10 @@ async def register_journal_data(
             f"Pinecone保存完了: 成功={pinecone_result['success_count']}, 失敗={pinecone_result['failed_count']}"
         )
 
+        # Pinecone保存でエラーがあった場合の処理
+        if "error" in pinecone_result:
+            logger.warning(f"Pinecone保存時にエラー: {pinecone_result['error']}")
+
         # 成功レスポンスを構築
         total_success = min(
             supabase_result["success_count"], pinecone_result["success_count"]
@@ -389,6 +588,14 @@ async def register_journal_data(
             supabase_result["failed_count"], pinecone_result["failed_count"]
         )
 
+        # detailsからerrorキーを除外
+        supabase_result_clean = {
+            k: v for k, v in supabase_result.items() if k != "error"
+        }
+        pinecone_result_clean = {
+            k: v for k, v in pinecone_result.items() if k != "error"
+        }
+
         response = JournalDataRegistrationResponse(
             status="success" if total_failed == 0 else "partial_success",
             message=f"{fiscal_year}年{fiscal_month}月の会計仕訳データ登録とベクトルストア構築が完了しました",
@@ -396,8 +603,8 @@ async def register_journal_data(
             failed_count=total_failed,
             pinecone_index_name=pinecone_result["index_name"],
             details={
-                "supabase_result": supabase_result,
-                "pinecone_result": pinecone_result,
+                "supabase_result": supabase_result_clean,
+                "pinecone_result": pinecone_result_clean,
                 "fiscal_year": fiscal_year,
                 "fiscal_month": fiscal_month,
                 "uploaded_files": [file.filename for file in files],
