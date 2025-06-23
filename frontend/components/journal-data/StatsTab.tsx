@@ -18,12 +18,10 @@ import {
   Calendar,
   RefreshCw,
 } from "lucide-react";
-import { useStats } from "../hooks";
-import { formatCurrency, formatDate } from "../utils/formatters";
+import { useStats } from "@/hooks/journal-data";
+import { formatCurrency, formatDate } from "@/lib/journal-data/formatters";
 
-interface StatsTabProps {}
-
-export default function StatsTab({}: StatsTabProps) {
+export default function StatsTab() {
   const { statsData, statsLoading, refreshStats } = useStats();
 
   if (statsLoading) {

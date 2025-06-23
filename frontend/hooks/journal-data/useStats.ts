@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from "react";
-import { useJournalDataContext } from "../store";
-import { setStatsData, setStatsLoading, setError } from "../store";
-import { journalDataAPI } from "../services/api";
-import type { JournalDataStats } from "../types";
+import { useJournalDataContext } from "@/lib/journal-data/store";
+import { setStatsData, setStatsLoading, setError } from "@/lib/journal-data/store";
+import { journalDataAPI } from "@/lib/journal-data/api";
+import type { JournalDataStats } from "@/lib/journal-data/types";
 
 export const useStats = () => {
   const { state, dispatch } = useJournalDataContext();

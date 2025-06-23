@@ -76,6 +76,7 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --scrollbar-width: 12px;
 }
 
 .dark {
@@ -116,8 +117,95 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  html {
+    /* スクロールバーを常に表示 */
+    overflow-y: scroll;
+    /* レイアウトシフト完全防止 */
+    width: 100vw;
+    max-width: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
+    /* 固定幅でレイアウトシフトを防ぐ */
+    width: calc(100vw - var(--scrollbar-width));
+    max-width: calc(100% - var(--scrollbar-width));
+    overflow-x: hidden;
+    overflow-y: scroll;
+    position: relative;
+  }
+
+  /* ドロップダウンメニューが開いてもレイアウトを維持 */
+  body[data-scroll-locked],
+  body[style*="overflow: hidden"] {
+    width: calc(100vw - var(--scrollbar-width)) !important;
+    max-width: calc(100% - var(--scrollbar-width)) !important;
+    overflow-y: scroll !important;
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* メインコンテンツエリアの調整 */
+  main,
+  header,
+  footer {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* スクロールバーのカスタムスタイル */
+  ::-webkit-scrollbar {
+    width: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 6px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.3);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: background-color 0.2s ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.5);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:active {
+    background: rgba(100, 116, 139, 0.7);
+    background-clip: content-box;
+  }
+
+  /* ダークモード対応 */
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.2);
+    background-clip: content-box;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.4);
+    background-clip: content-box;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:active {
+    background: rgba(148, 163, 184, 0.6);
+    background-clip: content-box;
+  }
+
+  /* Firefox対応 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.3) transparent;
+  }
+
+  .dark * {
+    scrollbar-color: rgba(148, 163, 184, 0.2) transparent;
   }
 }
 
@@ -129,31 +217,31 @@
     padding-left: 1rem;
     padding-right: 1rem;
   }
-  
+
   @media (min-width: 640px) {
     .container {
       max-width: 640px;
     }
   }
-  
+
   @media (min-width: 768px) {
     .container {
       max-width: 768px;
     }
   }
-  
+
   @media (min-width: 1024px) {
     .container {
       max-width: 1024px;
     }
   }
-  
+
   @media (min-width: 1280px) {
     .container {
       max-width: 1280px;
     }
   }
-  
+
   @media (min-width: 1536px) {
     .container {
       max-width: 1536px;

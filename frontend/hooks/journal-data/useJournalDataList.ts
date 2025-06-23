@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { useJournalDataContext } from "../store";
+import { useJournalDataContext } from "@/lib/journal-data/store";
 import {
   setJournalData,
   setTotalCount,
@@ -7,8 +7,8 @@ import {
   setSearchTerm,
   setDateFilter,
   setError,
-} from "../store";
-import { journalDataAPI } from "../services/api";
+} from "@/lib/journal-data/store";
+import { journalDataAPI } from "@/lib/journal-data/api";
 
 export const useJournalDataList = () => {
   const { state, dispatch } = useJournalDataContext();

@@ -1,7 +1,4 @@
-"use client";
-
-import React, { useState } from "react";
-import FileUploader from "../components/FileUploader";
+import React from "react";
 import {
   Card,
   CardContent,
@@ -9,150 +6,37 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
-  AlertCircle,
-  CheckCircle2,
   FileSpreadsheet,
   ArrowRight,
   Star,
   Database,
+  Upload,
+  Search,
+  Target,
+  Zap,
+  Shield,
 } from "lucide-react";
 import Link from "next/link";
 
-const API_BASE_URL =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8000"
-    : "http://localhost:8000";
-
-interface UploadResponse {
-  status: string;
-  message: string;
-  business_request_id: string;
-  uploaded_files: Array<{
-    file_id: string;
-    filename: string;
-    file_size: number;
-    file_type: string;
-    storage_path: string;
-  }>;
-  total_files: number;
-}
-
-interface SheetInfo {
-  name: string;
-  row_count: number;
-  col_count: number;
-  has_data: boolean;
-  data_range: string | null;
-  data_density: number;
-  estimated_data_cells: number;
-}
-
-export default function Home() {
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [excelSheets, setExcelSheets] = useState<{
-    sessionId: string;
-    filename: string;
-    sheets: SheetInfo[];
-  } | null>(null);
-
-  const handleUpload = async (
-    title: string,
-    description: string,
-    files: File[]
-  ) => {
-    setIsUploading(true);
-    setError(null);
-    setUploadResult(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("title", title);
-      if (description) {
-        formData.append("description", description);
-      }
-
-      files.forEach((file) => {
-        formData.append("files", file);
-      });
-
-      const response = await fetch(`${API_BASE_URL}/upload/business-request`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "アップロードに失敗しました");
-      }
-
-      const result: UploadResponse = await response.json();
-      setUploadResult(result);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "アップロード中にエラーが発生しました"
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleExcelSheetsReceived = (sessionId: string, filename: string, sheets: SheetInfo[]) => {
-    console.log('Excel sheets received:', { sessionId, filename, sheets });
-    setExcelSheets({ sessionId, filename, sheets });
-  };
-
-  const handleSheetSelected = (sessionId: string, sheetName: string) => {
-    console.log('Sheet selected:', { sessionId, sheetName });
-    // TODO: ここで選択されたシートに対する次の処理を実装
-    setError(null);
-    // 一時的に成功メッセージを表示
-    setUploadResult({
-      status: 'success',
-      message: `シート「${sheetName}」が選択されました`,
-      business_request_id: sessionId,
-      uploaded_files: [{
-        file_id: sessionId,
-        filename: excelSheets?.filename || 'Unknown',
-        file_size: 0,
-        file_type: 'excel',
-        storage_path: ''
-      }],
-      total_files: 1
-    });
-  };
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
-  const steps = [
+export default function LandingPage() {
+  const features = [
     {
-      number: "01",
-      title: "ファイルアップロード",
-      description:
-        "業務依頼のタイトルを入力し、分析対象のExcel/CSVファイルをドラッグ&ドロップまたは選択してアップロード",
+      icon: <Zap className="h-8 w-8 text-blue-600" />,
+      title: "AI自動解析",
+      description: "機械学習による高精度なデータマッチングで業務を自動化",
     },
     {
-      number: "02",
-      title: "自動解析開始",
-      description: "AIがファイル構造を解析し、最適なマッチング戦略を策定",
+      icon: <Target className="h-8 w-8 text-green-600" />,
+      title: "高精度突合",
+      description: "複雑な照合ルールにも対応した柔軟な突合処理",
     },
     {
-      number: "03",
-      title: "結果確認",
-      description: "詳細な分析結果とレポートをダウンロード可能",
+      icon: <Shield className="h-8 w-8 text-purple-600" />,
+      title: "セキュア処理",
+      description: "企業レベルのセキュリティでデータを安全に管理",
     },
   ];
 
@@ -168,46 +52,43 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">
-                  Excel Matching System
+                  経費精算突合システム
                 </h1>
-                <p className="text-sm text-gray-600">
-                  Advanced Data Analysis Platform
-                </p>
+                <p className="text-sm text-gray-600">Excel Matching System</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Link href="/journal-data">
-                <Button variant="outline" size="sm">
-                  <Database className="h-4 w-4 mr-2" />
-                  仕訳データ管理
-                </Button>
-              </Link>
               <Badge variant="secondary" className="hidden sm:flex">
                 v0.1.0
               </Badge>
-              <Button variant="outline" size="sm">
-                ヘルプ
-              </Button>
+              <Link href="/dashboard">
+                <Button size="sm">
+                  ダッシュボードへ
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="w-full max-w-7xl mx-auto px-4 py-8">
+      <main className="w-full max-w-7xl mx-auto px-4 py-12">
         {/* ヒーローセクション */}
-        <section className="text-center mb-12">
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-6 leading-tight">
+        <section className="text-center mb-16">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-5xl sm:text-6xl font-bold text-gray-900 mb-6 leading-tight">
               Excel照合を
               <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                自動で
+                スマートに
               </span>
             </h2>
-            <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-              Excel/CSVファイルをアップロードするだけで、AIによる高度なデータ分析とマッチングを実現。
-              複雑な設定は不要、直感的な操作で業務を効率化します。
+            <p className="text-xl text-gray-600 mb-8 leading-relaxed max-w-3xl mx-auto">
+              経費精算データとExcelファイルの突合処理をAIが自動化。
+              複雑な照合作業を効率化し、正確性を向上させます。
             </p>
-            <div className="flex items-center justify-center space-x-4 text-sm text-gray-500">
+
+            {/* 機能ハイライト */}
+            <div className="flex items-center justify-center space-x-6 text-sm text-gray-500 mb-8">
               <div className="flex items-center space-x-1">
                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
                 <span>最大5ファイル対応</span>
@@ -215,117 +96,60 @@ export default function Home() {
               <div className="hidden sm:block w-px h-4 bg-gray-300"></div>
               <div className="flex items-center space-x-1">
                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                <span>10MB/ファイル</span>
+                <span>AI自動照合</span>
               </div>
               <div className="hidden sm:block w-px h-4 bg-gray-300"></div>
               <div className="flex items-center space-x-1">
                 <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                <span>セキュア保存</span>
+                <span>セキュア処理</span>
               </div>
+            </div>
+
+            {/* CTAボタン */}
+            <div className="flex justify-center">
+              <Link href="/dashboard">
+                <Button size="lg" className="text-lg px-8 py-3">
+                  <Database className="h-5 w-5 mr-2" />
+                  今すぐ始める
+                </Button>
+              </Link>
             </div>
           </div>
         </section>
 
-        {/* アップロードセクション */}
+        {/* 特徴セクション */}
         <section className="mb-16">
-          <FileUploader 
-            onUpload={handleUpload} 
-            onExcelSheetsReceived={handleExcelSheetsReceived}
-            onSheetSelected={handleSheetSelected}
-            isUploading={isUploading}
-            apiBaseUrl={API_BASE_URL}
-          />
+          <div className="text-center mb-12">
+            <h3 className="text-3xl font-bold text-gray-900 mb-4">
+              なぜ選ばれるのか
+            </h3>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              従来の手作業による照合作業を革新する、最新AI技術を活用したスマートソリューション
+            </p>
+          </div>
 
-          {/* エラー表示 */}
-          {error && (
-            <div className="mt-6 max-w-4xl mx-auto px-4">
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription className="text-base">
-                  {error}
-                </AlertDescription>
-              </Alert>
-            </div>
-          )}
-
-          {/* アップロード成功表示 */}
-          {uploadResult && (
-            <div className="mt-6 max-w-4xl mx-auto px-4">
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <AlertDescription>
-                  <div className="space-y-3">
-                    <div>
-                      <h3 className="font-medium text-green-800">
-                        アップロード完了
-                      </h3>
-                      <p className="text-green-700 mt-1">
-                        {uploadResult.message}
-                      </p>
-                    </div>
-
-                    <div className="bg-white p-4 rounded-lg border border-green-200">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium text-gray-700">
-                            業務依頼ID:
-                          </span>
-                          <code className="ml-2 font-mono text-xs bg-gray-100 px-2 py-1 rounded">
-                            {uploadResult.business_request_id}
-                          </code>
-                        </div>
-                        <div>
-                          <span className="font-medium text-gray-700">
-                            ファイル数:
-                          </span>
-                          <span className="ml-2">
-                            {uploadResult.total_files}個
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* アップロードファイル詳細 */}
-                      <div className="mt-4">
-                        <h4 className="font-medium text-gray-800 mb-3">
-                          アップロードされたファイル:
-                        </h4>
-                        <div className="space-y-2">
-                          {uploadResult.uploaded_files.map((file) => (
-                            <div
-                              key={file.file_id}
-                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border"
-                            >
-                              <div className="flex items-center space-x-3">
-                                <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                                <div>
-                                  <p className="font-medium text-gray-800 text-sm">
-                                    {file.filename}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {formatFileSize(file.file_size)}
-                                  </p>
-                                </div>
-                              </div>
-                              <Badge variant="secondary" className="text-xs">
-                                完了
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-4 border-t border-green-200">
-                        <Button className="w-full sm:w-auto">
-                          <ArrowRight className="h-4 w-4 mr-2" />
-                          分析結果を確認
-                        </Button>
-                      </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {features.map((feature, index) => (
+              <Card
+                key={index}
+                className="text-center hover:shadow-lg transition-shadow duration-300"
+              >
+                <CardContent className="p-8">
+                  <div className="flex justify-center mb-4">
+                    <div className="h-16 w-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-full flex items-center justify-center">
+                      {feature.icon}
                     </div>
                   </div>
-                </AlertDescription>
-              </Alert>
-            </div>
-          )}
+                  <h4 className="text-xl font-semibold text-gray-900 mb-3">
+                    {feature.title}
+                  </h4>
+                  <p className="text-gray-600 leading-relaxed">
+                    {feature.description}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </section>
 
         {/* 使用方法セクション */}
@@ -335,30 +159,77 @@ export default function Home() {
               簡単3ステップで完了
             </h3>
             <p className="text-gray-600 max-w-2xl mx-auto">
-              複雑な設定は一切不要。直感的な操作で、誰でも高度なデータ分析を始められます。
+              段階的なワークフローで、誰でも確実にExcel照合作業を自動化できます。
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {steps.map((step, index) => (
-              <div key={index} className="text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 text-white rounded-full flex items-center justify-center text-xl font-bold mb-4 mx-auto">
-                  {step.number}
-                </div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                  {step.title}
-                </h4>
-                <p className="text-gray-600 text-sm leading-relaxed">
-                  {step.description}
-                </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-full flex items-center justify-center text-xl font-bold mb-4 mx-auto">
+                01
               </div>
-            ))}
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                仕訳データ管理
+              </h4>
+              <p className="text-gray-600 text-sm leading-relaxed">
+                会計システムから出力した仕訳データ（CSV）をアップロードし、システムに登録。一覧表示や検索で管理します。
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-600 to-green-700 text-white rounded-full flex items-center justify-center text-xl font-bold mb-4 mx-auto">
+                02
+              </div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                Excelアップロード
+              </h4>
+              <p className="text-gray-600 text-sm leading-relaxed">
+                各部門から提供されたExcel/CSVファイルをアップロード。AIが自動でファイル構造を解析し、照合準備を行います。
+              </p>
+            </div>
+
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-purple-700 text-white rounded-full flex items-center justify-center text-xl font-bold mb-4 mx-auto">
+                03
+              </div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                突合・照合実行
+              </h4>
+              <p className="text-gray-600 text-sm leading-relaxed">
+                登録済み仕訳データとExcelファイルの自動突合処理を実行。詳細な分析結果とレポートをダウンロード可能です。
+              </p>
+            </div>
           </div>
+        </section>
+
+        {/* CTA セクション */}
+        <section className="mb-16">
+          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-0">
+            <CardContent className="p-12">
+              <div className="text-center max-w-3xl mx-auto">
+                <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                  今すぐ始めてみませんか？
+                </h3>
+                <p className="text-gray-600 mb-8 text-lg">
+                  面倒な Excel 照合作業を AI にお任せください。
+                  数分でセットアップが完了し、すぐに効率化を実感できます。
+                </p>
+                <div className="flex justify-center">
+                  <Link href="/dashboard">
+                    <Button size="lg" className="text-lg px-8 py-3">
+                      <Database className="h-5 w-5 mr-2" />
+                      ダッシュボードを開く
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </section>
 
         {/* サポート情報セクション */}
         <section>
-          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-0">
+          <Card className="bg-gradient-to-r from-gray-50 to-slate-50 border-0">
             <CardContent className="p-8">
               <div className="text-center max-w-2xl mx-auto">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
@@ -384,10 +255,10 @@ export default function Home() {
         <div className="w-full max-w-7xl mx-auto px-4 py-8">
           <div className="text-center text-gray-600">
             <p className="text-sm">
-              © 2024 Excel Matching System. All rights reserved.
+              © 2024 経費精算突合システム. All rights reserved.
             </p>
             <p className="text-xs mt-2">
-              Powered by Next.js, Supabase, and Advanced AI Technology
+              Powered by Next.js and Advanced AI Technology
             </p>
           </div>
         </div>

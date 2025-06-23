@@ -1,27 +1,18 @@
 "use client";
 
 import React from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  FileSpreadsheet,
-  Upload,
-  Database,
-  History,
-  ArrowLeft,
-} from "lucide-react";
-import Link from "next/link";
+import { FileSpreadsheet, Upload, Database, History } from "lucide-react";
 
 // コンポーネントのインポート
-import UploadTab from "./components/UploadTab";
-import DataListTab from "./components/DataListTab";
-import HistoryTab from "./components/HistoryTab";
-import StatsTab from "./components/StatsTab";
-import OverwriteDialog from "./components/OverwriteDialog";
+import UploadTab from "@/components/journal-data/UploadTab";
+import DataListTab from "@/components/journal-data/DataListTab";
+import HistoryTab from "@/components/journal-data/HistoryTab";
+import StatsTab from "@/components/journal-data/StatsTab";
+import OverwriteDialog from "@/components/journal-data/OverwriteDialog";
 
 // 状態管理のインポート
-import { JournalDataProvider } from "./store";
+import { JournalDataProvider } from "@/lib/journal-data/store";
 
 // カスタムフックのインポート
 import {
@@ -29,7 +20,7 @@ import {
   useJournalDataList,
   useOperationHistory,
   useTabManagement,
-} from "./hooks";
+} from "@/hooks/journal-data";
 
 // ユーティリティのインポート
 import {
@@ -38,7 +29,9 @@ import {
   formatDateTime,
   getActionBadgeColor,
   getActionDisplayName,
-} from "./utils/formatters";
+} from "@/lib/journal-data/formatters";
+
+import AppLayout from "@/components/layout/AppLayout";
 
 // メインコンポーネント（カスタムフック使用）
 function JournalDataPageContent() {
@@ -53,9 +46,9 @@ function JournalDataPageContent() {
     showOverwriteDialog,
     error: uploadError,
     handleFileSelect,
+    uploadFiles,
     handleDragOver,
     handleDrop,
-    uploadFiles,
     handleOverwriteConfirm,
     handleOverwriteCancel,
   } = useFileUpload();
@@ -68,9 +61,9 @@ function JournalDataPageContent() {
     dateFilter,
     error: dataListError,
     loadJournalData,
-    handleDelete,
     handleSearch,
     handleDateFilter,
+    handleDelete,
   } = useJournalDataList();
 
   const {
@@ -92,121 +85,95 @@ function JournalDataPageContent() {
   const error = uploadError || dataListError || historyError;
 
   // ファイル選択ハンドラー（input要素用）
-  const handleFileInputSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputSelect = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = Array.from(event.target.files || []);
     handleFileSelect(files);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50">
-      {/* ヘッダー */}
-      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="w-full max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Link href="/">
-                <Button variant="ghost" size="sm">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  戻る
-                </Button>
-              </Link>
-              <div className="flex items-center space-x-3">
-                <div className="h-10 w-10 bg-gradient-to-br from-green-600 to-blue-600 rounded-lg flex items-center justify-center">
-                  <Database className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">
-                    仕訳データ管理
-                  </h1>
-                  <p className="text-sm text-gray-600">
-                    Journal Data Management
-                  </p>
-                </div>
-              </div>
-            </div>
-            <Badge variant="secondary">事前準備フロー</Badge>
-          </div>
-        </div>
-      </header>
+    <AppLayout title="仕訳データ管理" subtitle="Journal Data Management">
+      <Tabs
+        value={activeTab}
+        onValueChange={handleTabChange}
+        className="w-full"
+      >
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="upload" className="flex items-center space-x-2">
+            <Upload className="h-4 w-4" />
+            <span>データ登録</span>
+          </TabsTrigger>
+          <TabsTrigger value="list" className="flex items-center space-x-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            <span>データ一覧</span>
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex items-center space-x-2">
+            <History className="h-4 w-4" />
+            <span>操作履歴</span>
+          </TabsTrigger>
+          <TabsTrigger value="stats" className="flex items-center space-x-2">
+            <Database className="h-4 w-4" />
+            <span>統計情報</span>
+          </TabsTrigger>
+        </TabsList>
 
-      <main className="w-full max-w-7xl mx-auto px-4 py-8">
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="upload" className="flex items-center space-x-2">
-              <Upload className="h-4 w-4" />
-              <span>データ登録</span>
-            </TabsTrigger>
-            <TabsTrigger value="list" className="flex items-center space-x-2">
-              <FileSpreadsheet className="h-4 w-4" />
-              <span>データ一覧</span>
-            </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center space-x-2">
-              <History className="h-4 w-4" />
-              <span>操作履歴</span>
-            </TabsTrigger>
-            <TabsTrigger value="stats" className="flex items-center space-x-2">
-              <Database className="h-4 w-4" />
-              <span>統計情報</span>
-            </TabsTrigger>
-          </TabsList>
+        {/* データ登録タブ */}
+        <TabsContent value="upload" className="space-y-6">
+          <UploadTab
+            selectedFiles={selectedFiles}
+            setSelectedFiles={handleFileSelect}
+            fiscalYear={fiscalYear}
+            setFiscalYear={handleFiscalYearChange}
+            fiscalMonth={fiscalMonth}
+            setFiscalMonth={handleFiscalMonthChange}
+            isUploading={isUploading}
+            uploadProgress={uploadProgress}
+            uploadResult={uploadResult}
+            error={error}
+            onUpload={uploadFiles}
+            onFileSelect={handleFileInputSelect}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            setError={() => {}} // エラーはカスタムフック内で管理
+          />
+        </TabsContent>
 
-          {/* データ登録タブ */}
-          <TabsContent value="upload" className="space-y-6">
-            <UploadTab
-              selectedFiles={selectedFiles}
-              setSelectedFiles={handleFileSelect}
-              fiscalYear={fiscalYear}
-              setFiscalYear={handleFiscalYearChange}
-              fiscalMonth={fiscalMonth}
-              setFiscalMonth={handleFiscalMonthChange}
-              isUploading={isUploading}
-              uploadProgress={uploadProgress}
-              uploadResult={uploadResult}
-              error={error}
-              onUpload={uploadFiles}
-              onFileSelect={handleFileInputSelect}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              setError={() => {}} // エラーはカスタムフック内で管理
-            />
-          </TabsContent>
+        {/* データ一覧タブ */}
+        <TabsContent value="list" className="space-y-6">
+          <DataListTab
+            journalData={journalData}
+            totalCount={totalCount}
+            isLoading={isLoading}
+            searchTerm={searchTerm}
+            setSearchTerm={handleSearch}
+            dateFilter={dateFilter}
+            setDateFilter={handleDateFilter}
+            onLoadData={loadJournalData}
+            onDelete={handleDelete}
+            formatCurrency={formatCurrency}
+            formatDate={formatDate}
+          />
+        </TabsContent>
 
-          {/* データ一覧タブ */}
-          <TabsContent value="list" className="space-y-6">
-            <DataListTab
-              journalData={journalData}
-              totalCount={totalCount}
-              isLoading={isLoading}
-              searchTerm={searchTerm}
-              setSearchTerm={handleSearch}
-              dateFilter={dateFilter}
-              setDateFilter={handleDateFilter}
-              onLoadData={loadJournalData}
-              onDelete={handleDelete}
-              formatCurrency={formatCurrency}
-              formatDate={formatDate}
-            />
-          </TabsContent>
+        {/* 操作履歴タブ */}
+        <TabsContent value="history" className="space-y-6">
+          <HistoryTab
+            historyData={historyData}
+            historyLoading={historyLoading}
+            historyTotalCount={historyTotalCount}
+            onLoadHistory={refreshHistory}
+            formatDateTime={formatDateTime}
+            getActionBadgeColor={getActionBadgeColor}
+            getActionDisplayName={getActionDisplayName}
+          />
+        </TabsContent>
 
-          {/* 操作履歴タブ */}
-          <TabsContent value="history" className="space-y-6">
-            <HistoryTab
-              historyData={historyData}
-              historyLoading={historyLoading}
-              historyTotalCount={historyTotalCount}
-              onLoadHistory={refreshHistory}
-              formatDateTime={formatDateTime}
-              getActionBadgeColor={getActionBadgeColor}
-              getActionDisplayName={getActionDisplayName}
-            />
-          </TabsContent>
-
-          {/* 統計情報タブ */}
-          <TabsContent value="stats" className="space-y-6">
-            <StatsTab />
-          </TabsContent>
-        </Tabs>
-      </main>
+        {/* 統計情報タブ */}
+        <TabsContent value="stats" className="space-y-6">
+          <StatsTab />
+        </TabsContent>
+      </Tabs>
 
       {/* 上書き確認ダイアログ */}
       <OverwriteDialog
@@ -216,7 +183,7 @@ function JournalDataPageContent() {
         onConfirm={handleOverwriteConfirm}
         onCancel={handleOverwriteCancel}
       />
-    </div>
+    </AppLayout>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import { useJournalDataContext } from "../store";
-import { setActiveTab, setFiscalYear, setFiscalMonth } from "../store";
+import { useJournalDataContext } from "@/lib/journal-data/store";
+import { setActiveTab, setFiscalYear, setFiscalMonth } from "@/lib/journal-data/store";
 
 export const useTabManagement = () => {
   const { state, dispatch } = useJournalDataContext();

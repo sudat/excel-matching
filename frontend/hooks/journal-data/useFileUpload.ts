@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useJournalDataContext } from "../store";
+import { useJournalDataContext } from "@/lib/journal-data/store";
 import {
   setSelectedFiles,
   setError,
@@ -8,9 +8,9 @@ import {
   setUploadResult,
   setShowOverwriteDialog,
   setPendingOverwriteData,
-} from "../store";
-import { journalDataAPI } from "../services/api";
-import { isValidFileType, isValidFileSize } from "../utils/formatters";
+} from "@/lib/journal-data/store";
+import { journalDataAPI } from "@/lib/journal-data/api";
+import { isValidFileType, isValidFileSize } from "@/lib/journal-data/formatters";
 
 export const useFileUpload = () => {
   const { state, dispatch } = useJournalDataContext();
