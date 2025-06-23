@@ -1,9 +1,11 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import uuid
 import logging
 import urllib.parse
 import pandas as pd
+from pydantic import BaseModel
+from datetime import datetime
 
 # 新しいモジュールからインポート
 from models.table_models import TableCandidate
@@ -12,6 +14,7 @@ from services.session_manager import SessionManager
 from services.file_processor import FileProcessor
 from services.file_validator import FileValidator
 from services.data_analyzer import DataAnalyzer
+from services.schema_inference_service import SchemaInferenceService
 from utils.excel_utils import extract_table_data
 
 # ログ設定
@@ -26,6 +29,16 @@ session_manager = SessionManager()
 file_processor = FileProcessor()
 file_validator = FileValidator()
 data_analyzer = DataAnalyzer()
+
+# 遅延初期化用の変数
+_schema_inference_service = None
+
+def get_schema_inference_service():
+    """スキーマ推論サービスの遅延初期化"""
+    global _schema_inference_service
+    if _schema_inference_service is None:
+        _schema_inference_service = SchemaInferenceService()
+    return _schema_inference_service
 
 
 @router.post("/parse-excel")
@@ -378,6 +391,104 @@ async def select_table(session_id: str = Path(...), table_id: str = Path(...)):
         )
         raise HTTPException(
             status_code=500, detail=f"表選択中にエラーが発生しました: {str(e)}"
+        )
+
+
+# リクエストモデル
+class SchemaInferenceRequest(BaseModel):
+    session_id: str
+    headers: List[str]
+    sample_data: List[List[Any]]
+
+
+@router.post("/infer-schema")
+async def infer_schema(request: SchemaInferenceRequest):
+    """
+    Excelのヘッダーとサンプルデータから列マッピングを推論するエンドポイント
+    """
+    try:
+        # セッション存在確認
+        session_data = session_manager.get_session_data(request.session_id)
+        if not session_data:
+            raise HTTPException(
+                status_code=404, 
+                detail="セッションが見つからないか期限切れです"
+            )
+        
+        # 入力検証
+        if not request.headers:
+            raise HTTPException(
+                status_code=400, 
+                detail="ヘッダー情報が必要です"
+            )
+        
+        if not request.sample_data:
+            raise HTTPException(
+                status_code=400, 
+                detail="サンプルデータが必要です"
+            )
+        
+        # ヘッダーとサンプルデータの列数チェック
+        header_count = len(request.headers)
+        for i, row in enumerate(request.sample_data):
+            if len(row) != header_count:
+                logger.warning(
+                    f"サンプルデータ行{i+1}の列数({len(row)})がヘッダー列数({header_count})と一致しません"
+                )
+        
+        logger.info(
+            f"スキーマ推論開始 - セッション: {request.session_id}, "
+            f"ヘッダー数: {len(request.headers)}, サンプル行数: {len(request.sample_data)}"
+        )
+        
+        # スキーマ推論実行
+        schema_service = get_schema_inference_service()
+        inference_result = schema_service.infer_schema(
+            headers=request.headers,
+            sample_data=request.sample_data,
+            session_id=request.session_id
+        )
+        
+        # 結果検証
+        is_valid = schema_service.validate_mapping_result(inference_result)
+        
+        # セッションに推論結果を保存
+        session_data["schema_inference"] = {
+            "result": inference_result,
+            "is_valid": is_valid,
+            "timestamp": datetime.now().isoformat(),
+            "headers": request.headers,
+            "sample_data_rows": len(request.sample_data)
+        }
+        session_manager.save_session_data(request.session_id, session_data)
+        
+        logger.info(
+            f"スキーマ推論完了 - セッション: {request.session_id}, "
+            f"信頼度: {inference_result.get('overall_confidence', 0)}, "
+            f"有効性: {is_valid}"
+        )
+        
+        return {
+            "status": "success",
+            "message": "スキーマ推論が完了しました",
+            "data": {
+                "session_id": request.session_id,
+                "inference_result": inference_result,
+                "is_valid": is_valid,
+                "service_info": schema_service.get_service_info()
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"スキーマ推論エラー - セッション: {request.session_id}, "
+            f"エラー: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"スキーマ推論中にエラーが発生しました: {str(e)}"
         )
 
 

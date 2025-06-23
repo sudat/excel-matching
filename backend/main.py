@@ -13,7 +13,9 @@ from supabase import create_client
 from typing import cast, Any
 
 # 環境変数を読み込み
-load_dotenv()
+load_dotenv(".env")  # 最初にバックエンドディレクトリの.envを試行
+if not os.getenv("GOOGLE_API_KEY"):
+    load_dotenv("../.env")  # プロジェクトルートの.envを試行
 
 # 型チェックのためのAnyタイプ（import時の問題を回避）
 # Supabaseライブラリの型定義が不完全または見つからない場合にAnyを使用

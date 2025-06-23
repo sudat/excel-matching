@@ -51,6 +51,17 @@ class SessionManager:
     def get_session_data(self, session_id: str) -> Optional[Dict[str, Any]]:
         """セッションデータを取得（エイリアス）"""
         return self.get_session(session_id)
+    
+    def save_session_data(self, session_id: str, data: Dict[str, Any]) -> bool:
+        """セッションデータを保存"""
+        if session_id not in self.sessions:
+            return False
+        
+        self.sessions[session_id].update(data)
+        self.timestamps[session_id] = datetime.now()  # アクセス時刻を更新
+        
+        logger.info(f"Session data updated: {session_id}")
+        return True
 
     def create_session(self, session_id: str) -> Dict[str, Any]:
         """新しいセッションを作成"""
