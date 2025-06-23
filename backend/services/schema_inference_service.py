@@ -1,14 +1,15 @@
 """
 スキーマ推論サービス
-Gemini 2.5 Flash を使用してExcelヘッダーから列マッピングを推論する
+複数のAIモデル（Gemini、OpenAI等）を使用してExcelヘッダーから列マッピングを推論する
 """
 
 import logging
 from typing import Dict, List, Any, Optional
-import google.generativeai as genai
 import json
 import os
 from datetime import datetime
+from .llm_factory import LLMFactory
+from .llm_providers import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 class SchemaInferenceService:
     """
     Excelヘッダーとサンプルデータを分析して、標準仕訳スキーマへの列マッピングを推論するサービス
+    複数のAIモデル（Gemini、OpenAI等）に対応
     """
 
     # 標準仕訳スキーマの列マッピング対象
@@ -42,24 +44,24 @@ class SchemaInferenceService:
         }
     }
 
-    def __init__(self):
-        """Gemini クライアントを初期化"""
+    def __init__(self, provider_name: Optional[str] = None, model_variant: Optional[str] = None):
+        """LLMプロバイダーを初期化
+        
+        Args:
+            provider_name: プロバイダー名（環境変数から自動取得可能）
+            model_variant: モデルのバリエーション（flash, pro, mini等）
+        """
         try:
-            # API キーの設定
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_AI_API_KEY") or os.getenv("GEMINI_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY 環境変数が設定されていません")
+            # LLMプロバイダーの作成
+            self.llm_provider = LLMFactory.create_provider(
+                provider_name=provider_name,
+                model_variant=model_variant
+            )
             
-            # Gemini設定
-            genai.configure(api_key=api_key)
-            
-            # モデルの準備
-            self.model = genai.GenerativeModel('gemini-2.5-flash')
-            
-            logger.info("Gemini クライアントが正常に初期化されました")
+            logger.info(f"LLMプロバイダーが正常に初期化されました: {self.llm_provider.provider_name}")
             
         except Exception as e:
-            logger.error(f"Gemini クライアントの初期化に失敗しました: {str(e)}")
+            logger.error(f"LLMプロバイダーの初期化に失敗しました: {str(e)}")
             raise
 
     def infer_schema(
@@ -85,19 +87,15 @@ class SchemaInferenceService:
             # プロンプトを生成
             prompt = self._generate_inference_prompt(headers, sample_data)
             
-            # Gemini に推論を要求
-            generation_config = genai.types.GenerationConfig(
+            # LLMに推論を要求
+            response = self.llm_provider.generate_content(
+                prompt=prompt,
                 temperature=0.1,  # 一貫性のために低い温度
-                max_output_tokens=2048
-            )
-            
-            response = self.model.generate_content(
-                prompt,
-                generation_config=generation_config
+                max_tokens=2048
             )
             
             # レスポンスを解析
-            result = self._parse_response(response.text)
+            result = self._parse_response(response.content)
             
             # ログ出力
             logger.info(f"スキーマ推論完了 - セッション: {session_id}, 信頼度: {result.get('overall_confidence', 0)}")
@@ -114,7 +112,7 @@ class SchemaInferenceService:
         sample_data: List[List[Any]]
     ) -> str:
         """
-        Gemini用の推論プロンプトを生成
+        LLM用の推論プロンプトを生成
         """
         # サンプルデータのフォーマット
         formatted_sample = ""
@@ -190,7 +188,7 @@ class SchemaInferenceService:
 
     def _parse_response(self, response_text: str) -> Dict[str, Any]:
         """
-        Geminiのレスポンスを解析してPython辞書に変換
+        LLMのレスポンスを解析してPython辞書に変換
         """
         try:
             # JSONブロックの抽出（念のため）
@@ -284,10 +282,14 @@ class SchemaInferenceService:
         """
         サービス情報を返す
         """
+        model_info = self.llm_provider.get_model_info() if self.llm_provider else {}
+        
         return {
             "service_name": "SchemaInferenceService",
-            "model": "gemini-2.5-flash",
+            "llm_provider": model_info.get("provider", "unknown"),
+            "model": model_info.get("model", "unknown"),
             "target_columns": list(self.TARGET_COLUMNS.keys()),
-            "version": "1.0.0",
-            "initialized": hasattr(self, 'model')
+            "version": "2.0.0",
+            "initialized": self.llm_provider is not None and self.llm_provider.is_initialized(),
+            "model_info": model_info
         }
